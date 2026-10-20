@@ -452,8 +452,8 @@ export default function PaymentsPage({ showToast }) {
         >
           <div style={{ background: 'var(--bg-input)', padding: '20px', borderRadius: '12px', border: '1px solid var(--bg-card-border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ textAlign: 'center', paddingBottom: 12, borderBottom: '1px dashed var(--bg-card-border)' }}>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>NEXUS CAMPUS OS</h3>
-              <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Official University Hostel Fee Acknowledgment</p>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-primary)' }}>HOSTEL MANAGEMENT</h3>
+              <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>Hostel & Mess Fee Acknowledgment</p>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>

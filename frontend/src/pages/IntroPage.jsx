@@ -1,38 +1,57 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
-import { ArrowRight, ShieldCheck, Sparkles, Building2, ChevronRight, Eye } from 'lucide-react';
+import { Building2 } from 'lucide-react';
+import { buildHostelCampusEnvironment } from '../components/Campus3DEnvironment';
 
 export default function IntroPage({ onComplete }) {
   const containerRef = useRef(null);
-  const [progress, setProgress] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const isTransitioningRef = useRef(false);
+  const transitionStartRef = useRef(0);
 
-  useEffect(() => {
-    // Progress timer: reaches 100% in 4.5 seconds
-    const startTime = Date.now();
-    const duration = 4500;
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - startTime;
-      const pct = Math.min(100, Math.floor((elapsed / duration) * 100));
-      setProgress(pct);
-      if (pct >= 100) {
-        clearInterval(interval);
-        handleFinish();
-      }
-    }, 45);
+  // Transition into Login on User Interaction (Click / Tap / Any Key)
+  const handleEnter = useCallback(() => {
+    if (isTransitioningRef.current) return;
+    isTransitioningRef.current = true;
+    setIsTransitioning(true);
+    transitionStartRef.current = performance.now();
 
-    return () => clearInterval(interval);
-  }, []);
-
-  function handleFinish() {
     try {
       localStorage.setItem('nexus_intro_completed', 'true');
+      sessionStorage.setItem('nexus_session_intro_seen', 'true');
     } catch (e) {
-      // ignore storage errors
+      // ignore
     }
-    onComplete();
-  }
 
-  // Three.js 3D Campus Architectural Scene
+    // Smooth forward camera acceleration into hostel entrance, then transition
+    setTimeout(() => {
+      onComplete();
+    }, 950);
+  }, [onComplete]);
+
+  // Global Keydown, Click, and Touch listeners
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab'].includes(e.key)) return;
+      handleEnter();
+    };
+
+    const handleClickOrTouch = () => {
+      handleEnter();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('click', handleClickOrTouch);
+    window.addEventListener('touchstart', handleClickOrTouch, { passive: true });
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('click', handleClickOrTouch);
+      window.removeEventListener('touchstart', handleClickOrTouch);
+    };
+  }, [handleEnter]);
+
+  // 3D Cinematic Campus Scene & Animation
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -40,144 +59,55 @@ export default function IntroPage({ onComplete }) {
     let width = container.clientWidth || window.innerWidth;
     let height = container.clientHeight || window.innerHeight;
 
-    // Scene & Camera
+    // 1. Scene Setup
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x070b16, 0.035);
 
-    const camera = new THREE.PerspectiveCamera(48, width / height, 0.1, 1000);
-    camera.position.set(0, 5, 22);
+    // 2. Camera Setup
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
 
-    // Renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    // Initial Aerial Starting Position (Wide Aerial View of Campus)
+    const camStart = new THREE.Vector3(15, 14, 26);
+    const lookStart = new THREE.Vector3(0, 2.5, 0);
+
+    // Midpoint along Courtyard Promenade
+    const camMid = new THREE.Vector3(5.0, 5.8, 17.0);
+    const lookMid = new THREE.Vector3(-0.2, 2.0, 1.0);
+
+    // Hero Eye-Level View (Framing Block A entrance, courtyard, pathways, trees)
+    const camHero = new THREE.Vector3(1.2, 2.4, 10.2);
+    const lookHero = new THREE.Vector3(-0.3, 1.8, 0);
+
+    // Entrance Dolly Target on User Interaction
+    const camEntrance = new THREE.Vector3(-0.2, 1.6, 2.2);
+    const lookEntrance = new THREE.Vector3(0.5, 1.6, -1.0);
+
+    camera.position.copy(camStart);
+    camera.lookAt(lookStart);
+
+    // 3. WebGL Renderer
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: 'high-performance',
+      alpha: false
+    });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMappingExposure = 1.25;
     container.appendChild(renderer.domElement);
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0x38bdf8, 0.8);
-    scene.add(ambientLight);
+    // 4. Build University Hostel Campus Environment
+    const env = buildHostelCampusEnvironment(scene);
 
-    const dirLight1 = new THREE.DirectionalLight(0x60a5fa, 2.0);
-    dirLight1.position.set(10, 20, 15);
-    scene.add(dirLight1);
-
-    const dirLight2 = new THREE.DirectionalLight(0x06b6d4, 1.8);
-    dirLight2.position.set(-15, -5, 10);
-    scene.add(dirLight2);
-
-    // Central Campus Group
-    const campusGroup = new THREE.Group();
-    scene.add(campusGroup);
-
-    // 1. Procedural 3D Hostel Towers with Glowing Windows
-    const buildingGeom = new THREE.BoxGeometry(1, 1, 1);
-    const buildingMat = new THREE.MeshStandardMaterial({
-      color: 0x0f1d3a,
-      metalness: 0.85,
-      roughness: 0.25,
-      wireframe: false
-    });
-
-    const edgeMat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.55 });
-    const windowMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-
-    const buildings = [];
-    const buildingConfigs = [
-      { x: -5, z: 0, w: 2.8, h: 7, d: 2.8, name: 'Cauvery Block (H1)' },
-      { x: 0, z: -2, w: 3.5, h: 9.5, d: 3.5, name: 'Ganga Block (H2)' },
-      { x: 5, z: 1, w: 2.6, h: 6.5, d: 2.6, name: 'Yamuna Block (H3)' },
-      { x: -3, z: 4, w: 2.2, h: 5, d: 2.2, name: 'Krishna Block (H4)' },
-      { x: 3.5, z: -5, w: 2.4, h: 6, d: 2.4, name: 'Central Dining (M1)' }
-    ];
-
-    buildingConfigs.forEach((cfg) => {
-      const bMesh = new THREE.Mesh(buildingGeom, buildingMat);
-      bMesh.scale.set(cfg.w, cfg.h, cfg.d);
-      bMesh.position.set(cfg.x, cfg.h / 2 - 2, cfg.z);
-      campusGroup.add(bMesh);
-
-      // Wireframe Edges
-      const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(cfg.w, cfg.h, cfg.d));
-      const line = new THREE.LineSegments(edges, edgeMat);
-      line.position.copy(bMesh.position);
-      campusGroup.add(line);
-
-      // Windows grid on facade
-      const winCount = 8;
-      for (let i = 0; i < winCount; i++) {
-        const win = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.25), windowMat);
-        const yOff = (i / winCount) * (cfg.h - 1) - cfg.h / 2 + 1;
-        win.position.set(cfg.x, bMesh.position.y + yOff, cfg.z + cfg.d / 2 + 0.02);
-        campusGroup.add(win);
-      }
-
-      buildings.push(bMesh);
-    });
-
-    // 2. Glowing Ground Grid (Digital Campus Foundation)
-    const gridHelper = new THREE.GridHelper(30, 30, 0x3b82f6, 0x1e293b);
-    gridHelper.position.y = -2;
-    scene.add(gridHelper);
-
-    // 3. Floating Digital Holographic Room Pods
-    const podGeom = new THREE.IcosahedronGeometry(0.45, 0);
-    const podMat = new THREE.MeshStandardMaterial({
-      color: 0x06b6d4,
-      emissive: 0x0284c7,
-      emissiveIntensity: 0.7,
-      wireframe: true
-    });
-
-    const pods = [];
-    for (let i = 0; i < 9; i++) {
-      const pod = new THREE.Mesh(podGeom, podMat);
-      const angle = (i / 9) * Math.PI * 2;
-      const radius = 7 + (i % 3) * 1.5;
-      pod.position.set(Math.cos(angle) * radius, 1 + Math.sin(i * 1.5) * 2, Math.sin(angle) * radius);
-      campusGroup.add(pod);
-      pods.push({ mesh: pod, baseAngle: angle, radius, speed: 0.005 + (i % 3) * 0.002, yOffset: pod.position.y });
-    }
-
-    // 4. Subtle Data Particle Constellation
-    const particleCount = 200;
-    const particleGeom = new THREE.BufferGeometry();
-    const particlePos = new Float32Array(particleCount * 3);
-
-    for (let i = 0; i < particleCount * 3; i += 3) {
-      particlePos[i] = (Math.random() - 0.5) * 35;
-      particlePos[i + 1] = Math.random() * 16 - 2;
-      particlePos[i + 2] = (Math.random() - 0.5) * 35;
-    }
-
-    particleGeom.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
-    const particleMat = new THREE.PointsMaterial({
-      size: 0.12,
-      color: 0x67e8f9,
-      transparent: true,
-      opacity: 0.75,
-      blending: THREE.AdditiveBlending
-    });
-    const particles = new THREE.Points(particleGeom, particleMat);
-    scene.add(particles);
-
-    // Mouse movement interaction (Parallax)
-    let mouseX = 0;
-    let mouseY = 0;
-    let targetX = 0;
-    let targetY = 0;
-
+    // 5. Mouse Parallax Tracking
+    const mouse = { x: 0, y: 0, targetX: 0, targetY: 0 };
     const handleMouseMove = (e) => {
-      const windowHalfX = window.innerWidth / 2;
-      const windowHalfY = window.innerHeight / 2;
-      mouseX = (e.clientX - windowHalfX) * 0.0006;
-      mouseY = (e.clientY - windowHalfY) * 0.0006;
+      mouse.targetX = (e.clientX / width - 0.5) * 2;
+      mouse.targetY = -(e.clientY / height - 0.5) * 2;
     };
-
     window.addEventListener('mousemove', handleMouseMove);
 
-    // Resize handler
+    // Window Resize Handler
     const handleResize = () => {
       if (!container) return;
       width = container.clientWidth || window.innerWidth;
@@ -188,37 +118,70 @@ export default function IntroPage({ onComplete }) {
     };
     window.addEventListener('resize', handleResize);
 
-    // Animation Loop
+    // 6. Smooth Animation & Cinematic Flight Loop
     let reqId;
-    let clock = new THREE.Clock();
+    const animStartTime = performance.now();
+    const flightDuration = 9000; // 9 seconds cinematic glide to hero view
+
+    const currentLookAt = new THREE.Vector3().copy(lookStart);
+    const targetLookAt = new THREE.Vector3();
+
+    // Smoothstep interpolation helper
+    function smoothStep(t) {
+      return t * t * (3 - 2 * t);
+    }
 
     const animate = () => {
       reqId = requestAnimationFrame(animate);
-      const delta = clock.getElapsedTime();
 
-      // Smooth camera parallax
-      targetX += (mouseX - targetX) * 0.05;
-      targetY += (mouseY - targetY) * 0.05;
-      camera.position.x = Math.sin(targetX) * 22;
-      camera.position.z = Math.cos(targetX) * 22;
-      camera.position.y = 5 - targetY * 12;
-      camera.lookAt(0, 2.5, 0);
+      const now = performance.now();
+      const elapsed = now - animStartTime;
+      const timeSec = now * 0.001;
 
-      // Subtle slow rotation of campus scene
-      campusGroup.rotation.y = delta * 0.06;
+      // Update trees swaying, window lights, and floating dust motes
+      env.update(timeSec);
 
-      // Orbit floating room pods
-      pods.forEach((p) => {
-        p.baseAngle += p.speed;
-        p.mesh.position.x = Math.cos(p.baseAngle) * p.radius;
-        p.mesh.position.z = Math.sin(p.baseAngle) * p.radius;
-        p.mesh.position.y = p.yOffset + Math.sin(delta * 2 + p.radius) * 0.4;
-        p.mesh.rotation.x += 0.01;
-        p.mesh.rotation.y += 0.015;
-      });
+      // Smooth mouse damping
+      mouse.x += (mouse.targetX - mouse.x) * 0.05;
+      mouse.y += (mouse.targetY - mouse.y) * 0.05;
 
-      // Gently float particles
-      particles.rotation.y = delta * 0.02;
+      if (!isTransitioningRef.current) {
+        // --- PHASE 1: Cinematic Campus Flight ---
+        const flightT = Math.min(1.0, elapsed / flightDuration);
+
+        if (flightT < 0.5) {
+          // Aerial to Midpoint
+          const subT = smoothStep(flightT * 2);
+          camera.position.lerpVectors(camStart, camMid, subT);
+          targetLookAt.lerpVectors(lookStart, lookMid, subT);
+        } else {
+          // Midpoint to Hero View
+          const subT = smoothStep((flightT - 0.5) * 2);
+          camera.position.lerpVectors(camMid, camHero, subT);
+          targetLookAt.lerpVectors(lookMid, lookHero, subT);
+        }
+
+        // Apply gentle mouse parallax and subtle ambient breathing when at/near hero view
+        if (flightT > 0.4) {
+          const ambFactor = smoothStep((flightT - 0.4) / 0.6);
+          const ambX = Math.sin(timeSec * 0.35) * 0.25 * ambFactor;
+          const ambY = Math.cos(timeSec * 0.25) * 0.1 * ambFactor;
+          camera.position.x += (mouse.x * 0.35 + ambX) * ambFactor;
+          camera.position.y += (mouse.y * 0.2 + ambY) * ambFactor;
+        }
+
+        currentLookAt.lerp(targetLookAt, 0.08);
+        camera.lookAt(currentLookAt);
+      } else {
+        // --- PHASE 2: Transition Acceleration toward Entrance ---
+        const transElapsed = now - transitionStartRef.current;
+        const transT = Math.min(1.0, transElapsed / 900);
+        const transEase = transT * transT * transT; // Fast exponential acceleration
+
+        camera.position.lerp(camEntrance, transEase * 0.12);
+        currentLookAt.lerp(lookEntrance, 0.1);
+        camera.lookAt(currentLookAt);
+      }
 
       renderer.render(scene, camera);
     };
@@ -234,17 +197,8 @@ export default function IntroPage({ onComplete }) {
       if (container && renderer.domElement) {
         container.removeChild(renderer.domElement);
       }
-
-      // Dispose Three.js objects
-      buildingGeom.dispose();
-      buildingMat.dispose();
-      edgeMat.dispose();
-      windowMat.dispose();
-      podGeom.dispose();
-      podMat.dispose();
-      particleGeom.dispose();
-      particleMat.dispose();
       renderer.dispose();
+      env.dispose();
     };
   }, []);
 
@@ -253,297 +207,174 @@ export default function IntroPage({ onComplete }) {
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 9999,
-        background: '#070b16',
-        color: '#ffffff',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'space-between',
         overflow: 'hidden',
-        fontFamily: 'var(--font-sans)',
-        userSelect: 'none'
+        background: '#1e3a8a',
+        userSelect: 'none',
+        cursor: 'pointer'
       }}
     >
-      {/* 3D Canvas Background */}
+      {/* 3D WebGL Canvas Viewport */}
       <div
         ref={containerRef}
         style={{
+          width: '100%',
+          height: '100%',
           position: 'absolute',
-          inset: 0,
-          zIndex: 1,
-          pointerEvents: 'none'
+          inset: 0
         }}
       />
 
-      {/* Atmospheric Vignette Gradients */}
+      {/* Cinematic Soft Vignette & Sunset Warmth Overlay */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
           zIndex: 2,
           pointerEvents: 'none',
-          background: 'radial-gradient(circle at center, transparent 40%, rgba(7, 11, 22, 0.85) 100%)'
+          background: 'radial-gradient(circle at center, transparent 50%, rgba(15, 23, 42, 0.4) 100%)'
         }}
       />
 
-      {/* Top Header Bar */}
+      {/* Cinematic Exposure Flare on Transition */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          zIndex: 20,
+          pointerEvents: 'none',
+          backgroundColor: '#fffbeb',
+          opacity: isTransitioning ? 0.85 : 0,
+          transition: 'opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1)'
+        }}
+      />
+
+      {/* Minimal Top Brand Header */}
       <header
         style={{
-          position: 'relative',
+          position: 'absolute',
+          top: 'clamp(24px, 4vw, 40px)',
+          left: 'clamp(20px, 4vw, 48px)',
           zIndex: 10,
+          pointerEvents: 'none',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '28px 48px'
+          gap: 14,
+          opacity: isTransitioning ? 0 : 1,
+          transform: isTransitioning ? 'translateY(-14px)' : 'translateY(0)',
+          transition: 'all 0.6s cubic-bezier(0.16, 1, 0.3, 1)'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: '12px',
-              background: 'linear-gradient(135deg, #2563eb, #06b6d4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 25px rgba(37, 99, 235, 0.6)'
-            }}
-          >
-            <Building2 size={24} color="#ffffff" />
-          </div>
-          <div>
-            <h2
-              style={{
-                fontFamily: 'var(--font-heading)',
-                fontSize: '1.35rem',
-                fontWeight: 800,
-                letterSpacing: '-0.02em',
-                margin: 0,
-                color: '#ffffff'
-              }}
-            >
-              NEXUS <span style={{ color: '#38bdf8' }}>CAMPUS OS</span>
-            </h2>
-            <div
-              style={{
-                fontSize: '0.68rem',
-                fontWeight: 700,
-                letterSpacing: '0.12em',
-                color: '#94a3b8',
-                textTransform: 'uppercase'
-              }}
-            >
-              Enterprise Hostel Management System
-            </div>
-          </div>
-        </div>
-
         <div
           style={{
-            display: 'inline-flex',
+            width: 46,
+            height: 46,
+            borderRadius: '12px',
+            background: 'linear-gradient(135deg, #2563eb, #38bdf8)',
+            display: 'flex',
             alignItems: 'center',
-            gap: 8,
-            padding: '6px 14px',
-            background: 'rgba(56, 189, 248, 0.08)',
-            border: '1px solid rgba(56, 189, 248, 0.28)',
-            borderRadius: '999px',
-            fontSize: '0.75rem',
-            fontWeight: 700,
-            letterSpacing: '0.08em',
-            color: '#38bdf8',
-            backdropFilter: 'blur(10px)'
+            justifyContent: 'center',
+            boxShadow: '0 8px 24px rgba(37, 99, 235, 0.35)',
+            border: '1px solid rgba(255, 255, 255, 0.4)',
+            flexShrink: 0
           }}
         >
-          <span
+          <Building2 size={24} color="#ffffff" />
+        </div>
+        <div>
+          <h1
             style={{
-              width: 7,
-              height: 7,
-              borderRadius: '50%',
-              background: '#38bdf8',
-              boxShadow: '0 0 10px #38bdf8'
+              fontFamily: 'var(--font-heading)',
+              fontSize: 'clamp(1.1rem, 2.5vw, 1.4rem)',
+              fontWeight: 800,
+              letterSpacing: '-0.02em',
+              margin: 0,
+              color: '#ffffff',
+              textShadow: '0 2px 10px rgba(0, 0, 0, 0.4)'
             }}
-          />
-          SMART CAMPUS MANAGEMENT
+          >
+            HOSTEL <span style={{ color: '#38bdf8' }}>MANAGEMENT</span>
+          </h1>
+          <p
+            style={{
+              fontSize: '0.74rem',
+              fontWeight: 700,
+              letterSpacing: '0.12em',
+              color: '#e2e8f0',
+              margin: 0,
+              textTransform: 'uppercase',
+              textShadow: '0 1px 6px rgba(0, 0, 0, 0.35)'
+            }}
+          >
+            HOSTEL & MESS
+          </p>
         </div>
       </header>
 
-      {/* Center Hero Message */}
-      <main
+      {/* Minimal Bottom Center Prompt: "PRESS ANY KEY TO ENTER" */}
+      <div
         style={{
-          position: 'relative',
+          position: 'absolute',
+          bottom: 'clamp(28px, 5vw, 44px)',
+          left: '50%',
+          transform: `translateX(-50%) ${isTransitioning ? 'scale(0.92)' : 'scale(1)'}`,
           zIndex: 10,
-          maxWidth: 820,
-          padding: '0 48px',
+          pointerEvents: 'none',
           display: 'flex',
           flexDirection: 'column',
-          gap: 22
+          alignItems: 'center',
+          gap: 6,
+          opacity: isTransitioning ? 0 : 1,
+          transition: 'all 0.5s cubic-bezier(0.16, 1, 0.3, 1)'
         }}
       >
         <div
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            gap: 8,
-            width: 'fit-content',
-            padding: '5px 12px',
-            borderRadius: '6px',
-            background: 'rgba(255, 255, 255, 0.04)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            fontSize: '0.78rem',
-            color: '#cbd5e1'
+            gap: 10,
+            padding: '10px 22px',
+            borderRadius: '999px',
+            background: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(12px)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)'
           }}
         >
-          <Sparkles size={14} color="#f59e0b" />
-          <span>Next-Gen Multi-Hostel Infrastructure</span>
-        </div>
-
-        <h1
-          style={{
-            fontFamily: 'var(--font-heading)',
-            fontSize: 'clamp(2.4rem, 5.5vw, 4.2rem)',
-            fontWeight: 800,
-            lineHeight: 1.08,
-            letterSpacing: '-0.03em',
-            margin: 0,
-            color: '#ffffff'
-          }}
-        >
-          Manage Your Campus.{' '}
           <span
             style={{
-              background: 'linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent'
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              background: '#38bdf8',
+              boxShadow: '0 0 10px #38bdf8',
+              animation: 'pulse 2s infinite'
+            }}
+          />
+          <span
+            style={{
+              fontSize: '0.86rem',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              color: '#ffffff',
+              textTransform: 'uppercase'
             }}
           >
-            Simplify Hostel Life.
+            PRESS ANY KEY TO ENTER
           </span>
-        </h1>
-
-        <p
-          style={{
-            fontSize: '1.12rem',
-            lineHeight: 1.6,
-            color: '#94a3b8',
-            maxWidth: 620,
-            margin: 0
-          }}
-        >
-          One intelligent platform to manage residents, rooms, hostels, mess operations, inventory and payments with complete relational integrity.
-        </p>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 8 }}>
-          <button
-            onClick={handleFinish}
-            className="btn btn-primary btn-lg"
-            style={{
-              padding: '14px 28px',
-              fontSize: '0.98rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10
-            }}
-          >
-            <span>Get Started</span>
-            <ArrowRight size={18} />
-          </button>
-
-          <button
-            onClick={handleFinish}
-            className="btn btn-secondary btn-lg"
-            style={{
-              padding: '14px 24px',
-              fontSize: '0.98rem'
-            }}
-          >
-            Explore System
-          </button>
-        </div>
-      </main>
-
-      {/* Bottom Progress & Skip Bar */}
-      <footer
-        style={{
-          position: 'relative',
-          zIndex: 10,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '28px 48px',
-          borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-          backdropFilter: 'blur(10px)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18, minWidth: 280 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: '0.74rem',
-                fontWeight: 700,
-                letterSpacing: '0.08em',
-                color: '#38bdf8'
-              }}
-            >
-              ENTERING MANAGEMENT SYSTEM
-            </span>
-            <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-              Initializing 18 Relational Database Tables... {progress}%
-            </span>
-          </div>
-
-          <div
-            style={{
-              width: 140,
-              height: 4,
-              background: 'rgba(255, 255, 255, 0.1)',
-              borderRadius: 999,
-              overflow: 'hidden'
-            }}
-          >
-            <div
-              style={{
-                height: '100%',
-                width: `${progress}%`,
-                background: 'linear-gradient(90deg, #3b82f6, #06b6d4)',
-                borderRadius: 999,
-                transition: 'width 0.1s linear'
-              }}
-            />
-          </div>
         </div>
 
-        <button
-          onClick={handleFinish}
+        <span
           style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 6,
-            background: 'transparent',
-            border: 'none',
+            fontSize: '0.74rem',
+            fontWeight: 500,
             color: '#cbd5e1',
-            fontFamily: 'var(--font-heading)',
-            fontSize: '0.88rem',
-            fontWeight: 600,
-            cursor: 'pointer',
-            padding: '8px 16px',
-            borderRadius: '6px',
-            transition: 'all 0.2s ease'
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = '#38bdf8';
-            e.currentTarget.style.background = 'rgba(56, 189, 248, 0.08)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = '#cbd5e1';
-            e.currentTarget.style.background = 'transparent';
+            letterSpacing: '0.02em',
+            textShadow: '0 1px 4px rgba(0, 0, 0, 0.5)'
           }}
         >
-          <span>Skip Intro</span>
-          <ChevronRight size={16} />
-        </button>
-      </footer>
+          Tap anywhere to enter
+        </span>
+      </div>
     </div>
   );
 }

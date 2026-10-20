@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
 import Toast from './components/Toast';
-import Footer from './components/Footer';
 import CommandPalette from './components/CommandPalette';
 import { api } from './services/api';
 
@@ -33,16 +32,7 @@ import TermsPage from './pages/TermsPage';
 
 export default function App() {
   // Navigation & View Hierarchy ('intro' | 'login' | 'app')
-  const [currentView, setCurrentView] = useState(() => {
-    try {
-      const introCompleted = localStorage.getItem('nexus_intro_completed') === 'true';
-      if (!introCompleted) return 'intro';
-      const user = localStorage.getItem('nexus_auth_user') || sessionStorage.getItem('nexus_auth_user');
-      return user ? 'app' : 'login';
-    } catch (e) {
-      return 'intro';
-    }
-  });
+  const [currentView, setCurrentView] = useState('intro');
 
   // Current Logged-in User Session
   const [currentUser, setCurrentUser] = useState(() => {
@@ -131,7 +121,6 @@ export default function App() {
   function handleLoginSuccess(user) {
     setCurrentUser(user);
     setCurrentView('app');
-    showToast(`Welcome back, ${user.name || 'Campus Administrator'}`, 'success');
   }
 
   function handleLogout() {
@@ -143,7 +132,7 @@ export default function App() {
     }
     setCurrentUser(null);
     setCurrentView('login');
-    showToast('Securely signed out of Nexus Campus OS', 'info');
+    showToast('Securely signed out of Hostel Management', 'info');
   }
 
   function handleReplayIntro() {
@@ -151,17 +140,7 @@ export default function App() {
   }
 
   function handleIntroComplete() {
-    try {
-      const saved = localStorage.getItem('nexus_auth_user') || sessionStorage.getItem('nexus_auth_user');
-      if (saved) {
-        setCurrentUser(JSON.parse(saved));
-        setCurrentView('app');
-      } else {
-        setCurrentView('login');
-      }
-    } catch (e) {
-      setCurrentView('login');
-    }
+    setCurrentView('login');
   }
 
   // Render 3D Cinematic Intro
@@ -175,6 +154,7 @@ export default function App() {
       <LoginPage
         onLoginSuccess={handleLoginSuccess}
         healthInfo={healthInfo}
+        onBackToIntro={() => setCurrentView('intro')}
       />
     );
   }
@@ -250,8 +230,6 @@ export default function App() {
             />
           )}
         </main>
-
-        <Footer onNavigate={setActiveTab} />
       </div>
 
       {/* Quick Command Palette (Ctrl+K) */}

@@ -6,7 +6,6 @@ import {
   Trash2,
   Search,
   RefreshCw,
-  Download,
   Key,
   Link2,
   AlertCircle,
@@ -179,32 +178,6 @@ export default function DatabaseTableView({ tableName, showToast }) {
     }
   }
 
-  function exportCsv() {
-    if (!data?.data || data.data.length === 0) return;
-    const headers = data.columns.map((c) => c.name);
-    const csvRows = [];
-    csvRows.push(headers.join(','));
-
-    for (const row of data.data) {
-      const values = headers.map((header) => {
-        const val = row[header];
-        const escaped = ('' + (val === null || val === undefined ? '' : val)).replace(/"/g, '""');
-        return `"${escaped}"`;
-      });
-      csvRows.push(values.join(','));
-    }
-
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${tableName}_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast(`Exported ${tableName} data to CSV`, 'success');
-  }
-
   const columns = data?.columns || [];
   const rows = data?.data || [];
 
@@ -247,10 +220,6 @@ export default function DatabaseTableView({ tableName, showToast }) {
           <button className="btn btn-secondary" onClick={() => setRefreshKey((k) => k + 1)}>
             <RefreshCw size={14} />
             <span>Refresh</span>
-          </button>
-          <button className="btn btn-secondary" onClick={exportCsv} disabled={rows.length === 0}>
-            <Download size={14} />
-            <span>Export CSV</span>
           </button>
           <button className="btn btn-primary" onClick={handleOpenAddModal}>
             <Plus size={16} />

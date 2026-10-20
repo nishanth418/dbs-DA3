@@ -2,7 +2,6 @@ import React from 'react';
 import {
   Menu,
   RefreshCw,
-  Search,
   Database,
   Moon,
   Sun,
@@ -65,7 +64,7 @@ export default function Navbar({
 
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-            <span>Campus</span>
+            <span>Hostel & Mess</span>
             <ChevronRight size={12} />
             <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{currentTitle}</span>
           </div>
@@ -85,36 +84,6 @@ export default function Navbar({
 
       {/* Right Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        {/* Global Command Palette Trigger (Ctrl + K) */}
-        <button
-          onClick={onOpenSearch}
-          className="btn btn-secondary btn-sm"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            padding: '6px 14px',
-            background: 'var(--bg-input)',
-            borderColor: 'var(--bg-card-border)'
-          }}
-          title="Search modules & database tables (Ctrl + K)"
-        >
-          <Search size={14} color="var(--text-muted)" />
-          <span style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Quick Search...</span>
-          <kbd
-            style={{
-              fontSize: '0.66rem',
-              padding: '2px 6px',
-              borderRadius: '4px',
-              background: 'rgba(255, 255, 255, 0.08)',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-              fontFamily: 'var(--font-mono)',
-              color: 'var(--text-muted)'
-            }}
-          >
-            Ctrl K
-          </kbd>
-        </button>
 
         {/* Database Health Status Indicator */}
         <div

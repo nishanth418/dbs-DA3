@@ -46,7 +46,7 @@ export default function PrivacyPolicyPage({ onNavigate }) {
           For inquiries regarding institutional data protection or student record amendments, please contact:
         </p>
         <p style={{ color: 'var(--primary-color)', fontFamily: 'var(--font-mono)', fontSize: '0.84rem' }}>
-          admin@campus-nexus.edu
+          admin@hostel-management.edu
         </p>
       </div>
     </div>

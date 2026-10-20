@@ -28,7 +28,8 @@ export const NAVIGATION_SECTIONS = [
   {
     title: 'OVERVIEW',
     items: [
-      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard }
+      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { id: 'sql-query', label: 'SQL Studio', icon: Terminal }
     ]
   },
   {
@@ -66,8 +67,12 @@ export const NAVIGATION_SECTIONS = [
   {
     title: 'ANALYTICS & QUERY',
     items: [
-      { id: 'reports', label: 'Reports (13 Views)', icon: FileBarChart2 },
-      { id: 'sql-query', label: 'SQL Studio', icon: Terminal },
+      { id: 'reports', label: 'Reports', icon: FileBarChart2 }
+    ]
+  },
+  {
+    title: 'DATABASE',
+    items: [
       { id: 'table_STUDENT', label: 'Database Studio', icon: Database, matchPrefix: 'table_' }
     ]
   },
@@ -130,11 +135,11 @@ export default function Sidebar({
             display: 'flex',
             alignItems: 'center',
             justifyContent: collapsed ? 'center' : 'space-between',
-            padding: collapsed ? '0' : '0 20px',
+            padding: collapsed ? '0' : '0 16px',
             borderBottom: '1px solid var(--bg-sidebar-border)'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, overflow: 'hidden' }}>
             <div
               style={{
                 width: 36,
@@ -153,21 +158,38 @@ export default function Sidebar({
             </div>
 
             {!collapsed && (
-              <div style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}>
+              <div style={{ overflow: 'hidden', minWidth: 0, paddingRight: 6 }}>
                 <h2
                   style={{
                     fontFamily: 'var(--font-heading)',
-                    fontSize: '1.15rem',
+                    fontSize: '0.82rem',
                     fontWeight: 800,
-                    letterSpacing: '-0.02em',
+                    letterSpacing: '0.02em',
+                    lineHeight: 1.2,
                     margin: 0,
-                    color: 'var(--text-primary)'
+                    color: 'var(--text-primary)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
                   }}
+                  title="HOSTEL MANAGEMENT"
                 >
-                  NEXUS <span style={{ color: 'var(--primary)' }}>OS</span>
+                  HOSTEL <span style={{ color: 'var(--primary)' }}>MANAGEMENT</span>
                 </h2>
-                <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600, letterSpacing: '0.04em' }}>
-                  HOSTEL PLATFORM
+                <div
+                  style={{
+                    fontSize: '0.66rem',
+                    color: 'var(--text-muted)',
+                    fontWeight: 600,
+                    letterSpacing: '0.02em',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    marginTop: 2
+                  }}
+                  title="Hostel & Mess"
+                >
+                  Hostel & Mess
                 </div>
               </div>
             )}

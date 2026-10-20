@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
   FileBarChart2,
-  Download,
   Code,
   Copy,
   Check,
@@ -52,32 +51,6 @@ export default function ReportsPage({ showToast }) {
     }
   }
 
-  function exportCsv() {
-    if (!reportData || !reportData.data || reportData.data.length === 0) return;
-    const items = reportData.data;
-    const headers = Object.keys(items[0]);
-    const csvRows = [];
-    csvRows.push(headers.join(','));
-
-    for (const row of items) {
-      const values = headers.map((header) => {
-        const val = row[header];
-        const escaped = ('' + (val === null || val === undefined ? '' : val)).replace(/"/g, '""');
-        return `"${escaped}"`;
-      });
-      csvRows.push(values.join(','));
-    }
-
-    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${selectedKey}_report_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast('Report dataset exported as CSV', 'success');
-  }
 
   function copySql() {
     if (!reportData?.sql) return;
@@ -122,10 +95,6 @@ export default function ReportsPage({ showToast }) {
           <button className="btn btn-secondary" onClick={() => setShowSql(!showSql)}>
             <Code size={15} />
             <span>{showSql ? 'Hide SQL Query' : 'Inspect SQL Query'}</span>
-          </button>
-          <button className="btn btn-primary" onClick={exportCsv} disabled={rows.length === 0}>
-            <Download size={15} />
-            <span>Export CSV</span>
           </button>
         </div>
       </div>

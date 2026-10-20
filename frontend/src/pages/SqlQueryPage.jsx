@@ -7,7 +7,6 @@ import {
   Database,
   Clock,
   RefreshCw,
-  Download,
   Trash2,
   Table2,
   Code2
@@ -35,7 +34,7 @@ const EXACT_18_TABLES = [
   'PAYMENT_DETAIL'
 ];
 
-const SQL_CATEGORIES = ['All', 'DQL (Queries)', 'DML (Modify)', 'DDL (Schema)', 'Joins & Aggregates', 'Multi-Statement'];
+const SQL_CATEGORIES = ['All', 'DQL (Queries)', 'DML (Modify)', 'DDL (Schema)'];
 
 const QUICK_COMMANDS = [
   {
@@ -59,17 +58,17 @@ const QUICK_COMMANDS = [
     sql: "WITH HighRentRooms AS (\n  SELECT RoomNo, FloorNo, Type, RoomRent\n  FROM ROOM\n  WHERE RoomRent >= 4500\n)\nSELECT * FROM HighRentRooms\nORDER BY RoomRent DESC;"
   },
   {
-    category: 'Joins & Aggregates',
+    category: 'DQL (Queries)',
     label: '3-Table INNER JOIN',
     sql: "SELECT s.StudentID, s.FirstName || ' ' || s.LastName AS FullName,\n       r.RoomNo, r.RoomRent, h.HostelName\nFROM STUDENT s\nJOIN ROOM r ON s.RoomNo = r.RoomNo\nJOIN HOSTEL h ON s.HostelID = h.HostelID;"
   },
   {
-    category: 'Joins & Aggregates',
+    category: 'DQL (Queries)',
     label: 'LEFT JOIN & Aggregation',
     sql: "SELECT h.HostelName, COUNT(s.StudentID) AS TotalResidents\nFROM HOSTEL h\nLEFT JOIN STUDENT s ON h.HostelID = s.HostelID\nGROUP BY h.HostelID, h.HostelName;"
   },
   {
-    category: 'Joins & Aggregates',
+    category: 'DQL (Queries)',
     label: 'Payment Aggregates',
     sql: "SELECT Status, COUNT(*) AS TotalCount, SUM(Amount) AS TotalCollected, ROUND(AVG(Amount), 2) AS AvgAmount\nFROM PAYMENT\nGROUP BY Status;"
   },
@@ -109,7 +108,10 @@ export default function SqlQueryPage({ showToast }) {
 
   async function handleExecuteQuery() {
     if (!sql.trim()) {
-      showToast('Please enter a SQL command to execute', 'warning');
+      setErrorInfo({
+        message: 'Please enter a SQL command to execute',
+        status: 400
+      });
       return;
     }
 
@@ -121,13 +123,7 @@ export default function SqlQueryPage({ showToast }) {
       const res = await api.executeSqlQuery(sql);
       setResult(res);
 
-      if (res.rows || res.data) {
-        showToast(`Query returned ${res.count || (res.rows && res.rows.length) || 0} row(s) in ${res.executionTimeMs}ms`, 'success');
-      } else if (res.changes !== undefined) {
-        showToast(`Command executed successfully. Affected rows: ${res.changes}`, 'success');
-        loadSchema();
-      } else {
-        showToast(res.message || 'Command executed successfully', 'success');
+      if (!res.rows && !res.data) {
         loadSchema();
       }
     } catch (err) {
@@ -135,7 +131,6 @@ export default function SqlQueryPage({ showToast }) {
         message: err.message || 'An error occurred during query execution',
         status: err.status || 400
       });
-      showToast(err.message || 'SQL Execution Error', 'error');
     } finally {
       setExecuting(false);
     }
@@ -147,27 +142,6 @@ export default function SqlQueryPage({ showToast }) {
     }
   }
 
-  function exportToCSV() {
-    if (!resultRows.length) return;
-    const headers = resultCols.join(',');
-    const rows = resultRows.map((r) =>
-      resultCols
-        .map((c) => {
-          const val = r[c] === null || r[c] === undefined ? '' : String(r[c]);
-          return `"${val.replace(/"/g, '""')}"`;
-        })
-        .join(',')
-    );
-    const csvContent = [headers, ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `query_result_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Exported query results to CSV', 'success');
-  }
 
   const isSelectResult = result && (result.rows || result.data) && Array.isArray(result.rows || result.data);
   const resultRows = result ? (result.rows || result.data || []) : [];
@@ -197,10 +171,7 @@ export default function SqlQueryPage({ showToast }) {
             >
               <Terminal size={20} />
             </div>
-            <div>
-              <h2>SQL Studio & Query Engine</h2>
-              <p>Direct relational SQL execution across Aiven MySQL 8.4 with schema inspection and timing telemetry</p>
-            </div>
+            <h2 style={{ margin: 0 }}>SQL Studio</h2>
           </div>
         </div>
 
@@ -214,8 +185,8 @@ export default function SqlQueryPage({ showToast }) {
 
       {/* SQL Snippets Categories Toolbar */}
       <div style={{ marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginRight: 4 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: 2 }}>
             SQL Categories:
           </span>
           {SQL_CATEGORIES.map((cat) => {
@@ -223,15 +194,17 @@ export default function SqlQueryPage({ showToast }) {
             return (
               <button
                 key={cat}
+                type="button"
                 onClick={() => setActiveCategory(cat)}
                 style={{
-                  padding: '4px 10px',
-                  fontSize: '0.74rem',
+                  padding: '5px 12px',
+                  fontSize: '0.75rem',
                   fontWeight: 600,
                   borderRadius: 'var(--radius-sm)',
                   background: isActive ? 'var(--primary)' : 'var(--bg-input)',
                   color: isActive ? '#ffffff' : 'var(--text-secondary)',
                   border: isActive ? '1px solid var(--primary)' : '1px solid var(--bg-card-border)',
+                  boxShadow: isActive ? '0 2px 8px var(--primary-subtle)' : 'none',
                   cursor: 'pointer',
                   transition: 'all 0.15s ease'
                 }}
@@ -421,134 +394,194 @@ export default function SqlQueryPage({ showToast }) {
         </div>
       </div>
 
-      {/* Error Callout */}
-      {errorInfo && (
+      {/* Query Execution Results Section (Unified Results & Status) */}
+      {(result || errorInfo) && (
         <div
-          className="panel"
+          className="table-container"
           style={{
-            background: 'rgba(239, 68, 68, 0.08)',
-            border: '1px solid rgba(239, 68, 68, 0.3)',
-            borderRadius: 'var(--radius-md)',
-            padding: '14px 18px',
-            marginBottom: 20
+            marginTop: 20,
+            borderColor: errorInfo ? 'rgba(239, 68, 68, 0.35)' : 'var(--bg-card-border)'
           }}
         >
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <AlertCircle size={20} color="#ef4444" style={{ flexShrink: 0 }} />
-            <div>
-              <div style={{ color: '#f87171', fontWeight: 700, fontSize: '0.86rem' }}>
-                SQL Execution Error
-              </div>
-              <div style={{ color: '#fca5a5', fontSize: '0.82rem', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-                {errorInfo.message}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Non-Select Success Info */}
-      {result && !isSelectResult && (
-        <div
-          className="panel"
-          style={{
-            background: 'rgba(16, 185, 129, 0.08)',
-            border: '1px solid rgba(16, 185, 129, 0.3)',
-            borderRadius: 'var(--radius-md)',
-            padding: '14px 18px',
-            marginBottom: 20
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <CheckCircle2 size={18} color="#10b981" />
-              <span style={{ color: '#10b981', fontWeight: 700, fontSize: '0.86rem' }}>
-                Command executed successfully
-              </span>
-              {result.changes !== undefined && (
-                <span style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                  · Affected rows: <strong style={{ color: 'var(--text-primary)' }}>{result.changes}</strong>
+          {/* Header Area */}
+          <div
+            className="table-toolbar"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: 12,
+              padding: '12px 18px',
+              borderBottom: '1px solid var(--bg-card-border)',
+              background: errorInfo ? 'rgba(239, 68, 68, 0.04)' : undefined
+            }}
+          >
+            {/* LEFT: Title and Row Badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <h3 style={{ fontSize: '0.96rem', fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                Query Execution Results
+              </h3>
+              {errorInfo ? (
+                <span
+                  style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    background: 'rgba(239, 68, 68, 0.14)',
+                    color: '#ef4444',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    fontFamily: 'var(--font-mono)'
+                  }}
+                >
+                  [FAILED]
+                </span>
+              ) : isSelectResult ? (
+                <span
+                  style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    background: 'rgba(56, 189, 248, 0.14)',
+                    color: '#38bdf8',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    fontFamily: 'var(--font-mono)'
+                  }}
+                >
+                  [{resultRows.length} ROW{resultRows.length === 1 ? '' : 'S'}]
+                </span>
+              ) : (
+                <span
+                  style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    background: 'rgba(16, 185, 129, 0.14)',
+                    color: '#10b981',
+                    border: '1px solid rgba(16, 185, 129, 0.3)',
+                    fontFamily: 'var(--font-mono)'
+                  }}
+                >
+                  [{result.changes !== undefined ? `${result.changes} ROW(S) AFFECTED` : 'SUCCESS'}]
                 </span>
               )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#38bdf8', fontSize: '0.78rem', fontFamily: 'var(--font-mono)' }}>
-              <Clock size={13} />
-              <span>{result.executionTimeMs} ms</span>
+
+            {/* RIGHT: Inline Execution Status */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {errorInfo ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: '0.8rem',
+                    color: '#ef4444',
+                    fontWeight: 600,
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)'
+                  }}
+                >
+                  <AlertCircle size={14} color="#ef4444" />
+                  <span>Query failed</span>
+                </div>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: '0.8rem',
+                      color: '#10b981',
+                      fontWeight: 600,
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      background: 'rgba(16, 185, 129, 0.1)',
+                      border: '1px solid rgba(16, 185, 129, 0.25)'
+                    }}
+                  >
+                    <CheckCircle2 size={14} color="#10b981" />
+                    <span>Success</span>
+                    <span style={{ color: 'var(--text-muted)' }}>·</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      {isSelectResult ? `${resultRows.length} row(s)` : (result.changes !== undefined ? `${result.changes} row(s)` : 'Command OK')}
+                    </span>
+                    <span style={{ color: 'var(--text-muted)' }}>·</span>
+                    <span style={{ color: '#38bdf8', fontFamily: 'var(--font-mono)' }}>
+                      {result.executionTimeMs} ms
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Query Results Table for SELECT */}
-      {isSelectResult && (
-        <div className="table-container">
-          <div className="table-toolbar">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <h3 style={{ fontSize: '0.96rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                Query Execution Results
-              </h3>
-              <span className="badge badge-success">{resultRows.length} Row(s)</span>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button className="btn btn-secondary btn-sm" onClick={exportToCSV}>
-                <Download size={13} />
-                <span>Export CSV</span>
-              </button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#38bdf8', fontSize: '0.78rem', fontFamily: 'var(--font-mono)' }}>
-                <Clock size={13} />
-                <span>{result.executionTimeMs} ms</span>
+          {/* Results Content Body */}
+          {errorInfo ? (
+            <div style={{ padding: '16px 20px', background: 'rgba(239, 68, 68, 0.04)' }}>
+              <div style={{ color: '#fca5a5', fontFamily: 'var(--font-mono)', fontSize: '0.84rem', lineHeight: 1.5 }}>
+                {errorInfo.message}
               </div>
             </div>
-          </div>
-
-          <div className="data-table-wrapper" style={{ maxHeight: '55vh', overflowY: 'auto' }}>
-            <table className="data-table" style={{ width: 'max-content', minWidth: '100%' }}>
-              <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
-                <tr>
-                  {resultCols.map((col) => (
-                    <th key={col} style={{ whiteSpace: 'nowrap' }}>
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {resultRows.length === 0 ? (
+          ) : isSelectResult ? (
+            <div className="data-table-wrapper" style={{ maxHeight: '55vh', overflowY: 'auto' }}>
+              <table className="data-table" style={{ width: 'max-content', minWidth: '100%' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                   <tr>
-                    <td colSpan={resultCols.length || 1} style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)' }}>
-                      Query returned 0 rows.
-                    </td>
+                    {resultCols.map((col) => (
+                      <th key={col} style={{ whiteSpace: 'nowrap' }}>
+                        {col}
+                      </th>
+                    ))}
                   </tr>
-                ) : (
-                  resultRows.map((row, rIdx) => (
-                    <tr key={rIdx}>
-                      {resultCols.map((col) => {
-                        const val = row[col];
-                        const isNum = typeof val === 'number';
-                        return (
-                          <td
-                            key={col}
-                            style={{
-                              whiteSpace: 'nowrap',
-                              fontFamily: isNum || col.toLowerCase().includes('id') ? 'var(--font-mono)' : 'inherit',
-                              color: isNum ? '#10b981' : 'var(--text-primary)'
-                            }}
-                          >
-                            {val === null || val === undefined ? (
-                              <span style={{ color: '#f87171', fontStyle: 'italic', fontSize: '0.75rem' }}>NULL</span>
-                            ) : (
-                              String(val)
-                            )}
-                          </td>
-                        );
-                      })}
+                </thead>
+                <tbody>
+                  {resultRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={resultCols.length || 1} style={{ textAlign: 'center', padding: '30px 0', color: 'var(--text-muted)' }}>
+                        Query returned 0 rows.
+                      </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    resultRows.map((row, rIdx) => (
+                      <tr key={rIdx}>
+                        {resultCols.map((col) => {
+                          const val = row[col];
+                          const isNum = typeof val === 'number';
+                          return (
+                            <td
+                              key={col}
+                              style={{
+                                whiteSpace: 'nowrap',
+                                fontFamily: isNum || col.toLowerCase().includes('id') ? 'var(--font-mono)' : 'inherit',
+                                color: isNum ? '#10b981' : 'var(--text-primary)'
+                              }}
+                            >
+                              {val === null || val === undefined ? (
+                                <span style={{ color: '#f87171', fontStyle: 'italic', fontSize: '0.75rem' }}>NULL</span>
+                              ) : (
+                                String(val)
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div style={{ padding: '24px 20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+              {result.message || 'DDL / DML statement executed successfully in MySQL database.'}
+            </div>
+          )}
         </div>
       )}
     </div>
