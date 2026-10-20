@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Building2, Eye } from 'lucide-react';
+import { Plus, Edit2, Trash2, Building2, Eye, ShieldCheck, Layers, MapPin } from 'lucide-react';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { api } from '../services/api';
@@ -47,7 +47,7 @@ export default function HostelsPage({ showToast }) {
       name: '',
       type: 'Boys',
       total_floors: 3,
-      warden_id: '',
+      warden_id: wardens[0]?.warden_id ? String(wardens[0].warden_id) : '',
       address: ''
     });
     setErrors({});
@@ -57,11 +57,11 @@ export default function HostelsPage({ showToast }) {
   function openEditModal(h) {
     setEditingHostel(h);
     setFormData({
-      name: h.name,
-      type: h.type,
-      total_floors: h.total_floors,
+      name: h.name || '',
+      type: h.type || 'Boys',
+      total_floors: h.total_floors || 3,
       warden_id: h.warden_id ? String(h.warden_id) : '',
-      address: h.address
+      address: h.address || ''
     });
     setErrors({});
     setIsModalOpen(true);
@@ -70,8 +70,7 @@ export default function HostelsPage({ showToast }) {
   function validate() {
     const errs = {};
     if (!formData.name.trim()) errs.name = 'Hostel name is required';
-    if (!formData.total_floors || formData.total_floors <= 0) errs.total_floors = 'Total floors must be at least 1';
-    if (!formData.address.trim()) errs.address = 'Campus location address is required';
+    if (!formData.total_floors || formData.total_floors < 1) errs.total_floors = 'Valid floor count required';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -85,7 +84,7 @@ export default function HostelsPage({ showToast }) {
       const payload = {
         ...formData,
         total_floors: Number(formData.total_floors),
-        warden_id: formData.warden_id ? Number(formData.warden_id) : null
+        warden_id: formData.warden_id || null
       };
 
       if (editingHostel) {
@@ -93,7 +92,7 @@ export default function HostelsPage({ showToast }) {
         showToast('Hostel updated successfully', 'success');
       } else {
         await api.createHostel(payload);
-        showToast('Hostel created successfully', 'success');
+        showToast('New hostel block created successfully', 'success');
       }
       setIsModalOpen(false);
       loadData();
@@ -108,7 +107,7 @@ export default function HostelsPage({ showToast }) {
     try {
       setSaving(true);
       await api.deleteHostel(deleteHostelId);
-      showToast('Hostel deleted successfully', 'success');
+      showToast('Hostel removed successfully', 'success');
       setDeleteHostelId(null);
       loadData();
     } catch (err) {
@@ -122,104 +121,105 @@ export default function HostelsPage({ showToast }) {
     <div>
       <div className="page-header">
         <div className="page-header-title">
-          <h2>Hostel Buildings</h2>
-          <p>Hostel blocks, floor plans, resident capacity, and warden assignments</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #2563eb, #06b6d4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff'
+              }}
+            >
+              <Building2 size={20} />
+            </div>
+            <div>
+              <h2>Hostel Blocks & Housing Management</h2>
+              <p>Residential towers, floor infrastructure, and chief warden oversight</p>
+            </div>
+          </div>
         </div>
+
         <div className="page-actions">
           <button className="btn btn-primary" onClick={openCreateModal}>
             <Plus size={16} />
-            Add New Hostel
+            <span>Add Hostel Block</span>
           </button>
         </div>
       </div>
 
-      <div className="table-container">
-        <div className="data-table-wrapper">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Hostel Name</th>
-                <th>Type</th>
-                <th>Floors</th>
-                <th>Warden</th>
-                <th>Rooms</th>
-                <th>Capacity</th>
-                <th>Location</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '40px 0' }}>
-                    Loading hostels...
-                  </td>
-                </tr>
-              ) : hostels.length === 0 ? (
-                <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                    No hostels found in database.
-                  </td>
-                </tr>
-              ) : (
-                hostels.map((h) => (
-                  <tr key={h.hostel_id}>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>#{h.hostel_id}</td>
-                    <td style={{ fontWeight: 600, color: '#fff' }}>{h.name}</td>
-                    <td>
-                      <span className={`badge ${h.type === 'Boys' ? 'badge-info' : h.type === 'Girls' ? 'badge-warning' : 'badge-success'}`}>
-                        {h.type}
-                      </span>
-                    </td>
-                    <td>{h.total_floors} Floors</td>
-                    <td>
-                      {h.warden_name ? (
-                        <div>
-                          <div style={{ color: '#fff', fontWeight: 500 }}>{h.warden_name}</div>
-                          <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>{h.warden_email}</div>
-                        </div>
-                      ) : (
-                        <span style={{ color: '#f59e0b', fontSize: '0.78rem' }}>Unassigned</span>
-                      )}
-                    </td>
-                    <td>
-                      <span style={{ color: '#38bdf8', fontWeight: 600 }}>{h.occupied_rooms || 0}</span>
-                      <span style={{ color: '#94a3b8' }}> / {h.total_rooms || 0}</span>
-                    </td>
-                    <td style={{ fontWeight: 600, color: '#10b981' }}>{h.total_capacity || 0} Beds</td>
-                    <td style={{ fontSize: '0.8rem', color: '#94a3b8', maxWidth: 220 }}>{h.address}</td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <button
-                          className="btn btn-secondary btn-icon btn-sm"
-                          onClick={() => openEditModal(h)}
-                          title="Edit hostel"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          className="btn btn-danger btn-icon btn-sm"
-                          onClick={() => setDeleteHostelId(h.hostel_id)}
-                          title="Delete hostel"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+      {/* Hostel Cards Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20, marginBottom: 28 }}>
+        {hostels.map((h) => (
+          <div
+            key={h.hostel_id}
+            className="panel"
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              position: 'relative'
+            }}
+          >
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                <span className="badge badge-info">{h.type || 'Campus Block'}</span>
+                <span style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                  ID: #{h.hostel_id}
+                </span>
+              </div>
+
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: 8 }}>
+                {h.name}
+              </h3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Layers size={15} color="var(--primary)" />
+                  <span><strong>{h.total_floors}</strong> Total Floors ({h.room_count || 5} Rooms)</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <ShieldCheck size={15} color="#10b981" />
+                  <span>Warden: <strong style={{ color: 'var(--text-primary)' }}>{h.warden_name || 'Assigned'}</strong></span>
+                </div>
+                {h.address && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <MapPin size={15} color="#f59e0b" />
+                    <span>{h.address}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20, paddingTop: 14, borderTop: '1px solid var(--bg-card-border)' }}>
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={() => openEditModal(h)}
+              >
+                <Edit2 size={13} />
+                <span>Edit</span>
+              </button>
+              <button
+                className="btn btn-danger btn-sm"
+                onClick={() => setDeleteHostelId(h.hostel_id)}
+              >
+                <Trash2 size={13} />
+                <span>Delete</span>
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Add / Edit Hostel Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingHostel ? `Edit Hostel: ${editingHostel.name}` : 'Create New Hostel Building'}
+        title={editingHostel ? `Edit Hostel: ${editingHostel.name}` : 'Create New Hostel Block'}
+        maxWidth="540px"
       >
         <form onSubmit={handleSave}>
           <div className="form-grid">
@@ -228,7 +228,7 @@ export default function HostelsPage({ showToast }) {
               <input
                 type="text"
                 className="form-input"
-                placeholder="e.g. Aryabhata Boys Hostel"
+                placeholder="e.g. Cauvery Boys Hostel"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
@@ -236,14 +236,15 @@ export default function HostelsPage({ showToast }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Resident Type *</label>
+              <label className="form-label">Housing Type</label>
               <select
                 className="form-select"
                 value={formData.type}
                 onChange={(e) => setFormData({ ...formData, type: e.target.value })}
               >
-                <option value="Boys">Boys</option>
-                <option value="Girls">Girls</option>
+                <option value="Boys">Boys Hostel</option>
+                <option value="Girls">Girls Hostel</option>
+                <option value="PG / Scholars">PG / Scholars</option>
                 <option value="Co-ed">Co-ed</option>
               </select>
             </div>
@@ -252,9 +253,9 @@ export default function HostelsPage({ showToast }) {
               <label className="form-label">Total Floors *</label>
               <input
                 type="number"
-                className="form-input"
                 min="1"
                 max="20"
+                className="form-input"
                 value={formData.total_floors}
                 onChange={(e) => setFormData({ ...formData, total_floors: e.target.value })}
               />
@@ -262,7 +263,7 @@ export default function HostelsPage({ showToast }) {
             </div>
 
             <div className="form-group form-grid-full">
-              <label className="form-label">Supervising Warden</label>
+              <label className="form-label">Assign Warden</label>
               <select
                 className="form-select"
                 value={formData.warden_id}
@@ -278,19 +279,18 @@ export default function HostelsPage({ showToast }) {
             </div>
 
             <div className="form-group form-grid-full">
-              <label className="form-label">Address & Campus Location *</label>
+              <label className="form-label">Campus Location / Address</label>
               <textarea
                 className="form-textarea"
                 rows="2"
-                placeholder="Block, Campus Sector, City..."
+                placeholder="North Campus Block A..."
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               />
-              {errors.address && <span className="form-error">{errors.address}</span>}
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--bg-card-border)' }}>
             <button
               type="button"
               className="btn btn-secondary"
@@ -306,13 +306,12 @@ export default function HostelsPage({ showToast }) {
         </form>
       </Modal>
 
-      {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={Boolean(deleteHostelId)}
         onClose={() => setDeleteHostelId(null)}
         onConfirm={handleDelete}
-        title="Delete Hostel Building"
-        message="Are you sure you want to delete this hostel? You cannot delete a hostel if it still has rooms assigned to it (Foreign Key Protection)."
+        title="Delete Hostel Block"
+        message="Are you sure you want to delete this hostel? All room records and resident allocations linked to this building will be impacted by foreign key constraints."
         confirmText="Confirm Delete"
         isLoading={saving}
       />

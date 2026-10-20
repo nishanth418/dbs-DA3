@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Layers } from 'lucide-react';
+import { Plus, Edit2, Trash2, Layers, CheckCircle2, DollarSign, Users } from 'lucide-react';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { api } from '../services/api';
@@ -14,11 +14,12 @@ export default function RoomTypesPage({ showToast }) {
   const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
-    type_name: '',
+    type_name: 'Single Room',
+    ac_type: 'AC',
     capacity: 1,
-    fee_per_month: 5000,
-    description: ''
+    rent: 5000
   });
+
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
@@ -40,10 +41,10 @@ export default function RoomTypesPage({ showToast }) {
   function openCreateModal() {
     setEditingType(null);
     setFormData({
-      type_name: '',
+      type_name: 'Single Room',
+      ac_type: 'AC',
       capacity: 1,
-      fee_per_month: 5000,
-      description: ''
+      rent: 5000
     });
     setErrors({});
     setIsModalOpen(true);
@@ -52,10 +53,10 @@ export default function RoomTypesPage({ showToast }) {
   function openEditModal(t) {
     setEditingType(t);
     setFormData({
-      type_name: t.type_name,
-      capacity: t.capacity,
-      fee_per_month: t.fee_per_month,
-      description: t.description || ''
+      type_name: t.type_name || '',
+      ac_type: t.ac_type || 'AC',
+      capacity: t.capacity || 1,
+      rent: t.rent || 5000
     });
     setErrors({});
     setIsModalOpen(true);
@@ -63,9 +64,8 @@ export default function RoomTypesPage({ showToast }) {
 
   function validate() {
     const errs = {};
-    if (!formData.type_name.trim()) errs.type_name = 'Room type name is required';
-    if (!formData.capacity || formData.capacity <= 0) errs.capacity = 'Capacity must be at least 1';
-    if (formData.fee_per_month === undefined || formData.fee_per_month < 0) errs.fee_per_month = 'Valid fee required';
+    if (!formData.type_name.trim()) errs.type_name = 'Type name is required';
+    if (!formData.capacity || formData.capacity < 1) errs.capacity = 'Capacity must be at least 1';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -77,18 +77,17 @@ export default function RoomTypesPage({ showToast }) {
     try {
       setSaving(true);
       const payload = {
-        type_name: formData.type_name,
+        ...formData,
         capacity: Number(formData.capacity),
-        fee_per_month: Number(formData.fee_per_month),
-        description: formData.description
+        rent: Number(formData.rent)
       };
 
       if (editingType) {
         await api.updateRoomType(editingType.type_id, payload);
-        showToast('Room type updated successfully', 'success');
+        showToast('Room type configuration updated', 'success');
       } else {
         await api.createRoomType(payload);
-        showToast('Room type created successfully', 'success');
+        showToast('New room type created successfully', 'success');
       }
       setIsModalOpen(false);
       loadData();
@@ -117,101 +116,94 @@ export default function RoomTypesPage({ showToast }) {
     <div>
       <div className="page-header">
         <div className="page-header-title">
-          <h2>Room Configurations & Fees</h2>
-          <p>Define standard room classifications, occupancy limits, and monthly fee pricing</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #2563eb, #06b6d4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff'
+              }}
+            >
+              <Layers size={20} />
+            </div>
+            <div>
+              <h2>Room Type Specifications</h2>
+              <p>Standardized room tiers, student capacity limits, air-conditioning options, and base rents</p>
+            </div>
+          </div>
         </div>
+
         <div className="page-actions">
           <button className="btn btn-primary" onClick={openCreateModal}>
             <Plus size={16} />
-            Add Room Type
+            <span>Create Room Type</span>
           </button>
         </div>
       </div>
 
-      <div className="table-container">
-        <div className="data-table-wrapper">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Configuration Name</th>
-                <th>Bed Capacity</th>
-                <th>Monthly Rent</th>
-                <th>Rooms Configured</th>
-                <th>Description</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '40px 0' }}>
-                    Loading room configurations...
-                  </td>
-                </tr>
-              ) : types.length === 0 ? (
-                <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                    No room types configured.
-                  </td>
-                </tr>
-              ) : (
-                types.map((t) => (
-                  <tr key={t.type_id}>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>#{t.type_id}</td>
-                    <td style={{ fontWeight: 600, color: '#fff' }}>{t.type_name}</td>
-                    <td>
-                      <span style={{ color: '#fff', fontWeight: 600 }}>{t.capacity}</span> Person(s)
-                    </td>
-                    <td style={{ color: '#10b981', fontWeight: 700, fontSize: '0.92rem' }}>
-                      ₹{t.fee_per_month.toLocaleString()} / mo
-                    </td>
-                    <td>
-                      <span className="badge badge-info">{t.total_rooms_configured || 0} Rooms</span>
-                    </td>
-                    <td style={{ fontSize: '0.8rem', color: '#94a3b8', maxWidth: 280 }}>
-                      {t.description || '-'}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <button
-                          className="btn btn-secondary btn-icon btn-sm"
-                          onClick={() => openEditModal(t)}
-                          title="Edit configuration"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          className="btn btn-danger btn-icon btn-sm"
-                          onClick={() => setDeleteTypeId(t.type_id)}
-                          title="Delete configuration"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
+        {types.map((t) => (
+          <div key={t.type_id} className="panel" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                <span className={`badge ${t.ac_type === 'AC' ? 'badge-info' : 'badge-warning'}`}>
+                  {t.ac_type || 'Non-AC'}
+                </span>
+                <span style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                  #{t.type_id}
+                </span>
+              </div>
+
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: 8 }}>
+                {t.type_name}
+              </h3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.86rem', color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Users size={16} color="var(--primary)" />
+                  <span>Max Capacity: <strong style={{ color: 'var(--text-primary)' }}>{t.capacity} Resident(s)</strong></span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <DollarSign size={16} color="#10b981" />
+                  <span>Base Rent: <strong style={{ color: '#10b981', fontFamily: 'var(--font-mono)' }}>₹{t.rent ? Number(t.rent).toLocaleString() : '5,000'}</strong>/mo</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20, paddingTop: 14, borderTop: '1px solid var(--bg-card-border)' }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => openEditModal(t)}>
+                <Edit2 size={13} />
+                <span>Edit</span>
+              </button>
+              <button className="btn btn-danger btn-sm" onClick={() => setDeleteTypeId(t.type_id)}>
+                <Trash2 size={13} />
+                <span>Delete</span>
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Add / Edit Modal */}
+      {/* Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingType ? `Edit Configuration: ${editingType.type_name}` : 'Create Room Configuration'}
+        title={editingType ? `Edit Room Type: ${editingType.type_name}` : 'Create Room Type'}
+        maxWidth="500px"
       >
         <form onSubmit={handleSave}>
           <div className="form-grid">
             <div className="form-group form-grid-full">
-              <label className="form-label">Configuration Name *</label>
+              <label className="form-label">Type Name *</label>
               <input
                 type="text"
                 className="form-input"
-                placeholder="e.g. Single Occupancy (AC)"
+                placeholder="e.g. Deluxe Single AC, Double Non-AC"
                 value={formData.type_name}
                 onChange={(e) => setFormData({ ...formData, type_name: e.target.value })}
               />
@@ -219,66 +211,57 @@ export default function RoomTypesPage({ showToast }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Bed Capacity *</label>
-              <input
-                type="number"
-                className="form-input"
-                min="1"
-                max="10"
-                value={formData.capacity}
-                onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
-              />
-              {errors.capacity && <span className="form-error">{errors.capacity}</span>}
+              <label className="form-label">AC Configuration</label>
+              <select
+                className="form-select"
+                value={formData.ac_type}
+                onChange={(e) => setFormData({ ...formData, ac_type: e.target.value })}
+              >
+                <option value="AC">Air Conditioned (AC)</option>
+                <option value="Non-AC">Non-AC</option>
+              </select>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Monthly Rent (₹) *</label>
+              <label className="form-label">Student Capacity *</label>
               <input
                 type="number"
+                min="1"
+                max="10"
                 className="form-input"
-                min="0"
-                step="100"
-                value={formData.fee_per_month}
-                onChange={(e) => setFormData({ ...formData, fee_per_month: e.target.value })}
+                value={formData.capacity}
+                onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
               />
-              {errors.fee_per_month && <span className="form-error">{errors.fee_per_month}</span>}
             </div>
 
             <div className="form-group form-grid-full">
-              <label className="form-label">Description & Amenities</label>
-              <textarea
-                className="form-textarea"
-                rows="2"
-                placeholder="Amenities included, study desk, AC, attached bathroom..."
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              <label className="form-label">Monthly Rent Amount (₹)</label>
+              <input
+                type="number"
+                className="form-input"
+                value={formData.rent}
+                onChange={(e) => setFormData({ ...formData, rent: e.target.value })}
               />
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setIsModalOpen(false)}
-              disabled={saving}
-            >
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--bg-card-border)' }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)} disabled={saving}>
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : editingType ? 'Update Configuration' : 'Create Configuration'}
+              {saving ? 'Saving...' : editingType ? 'Update Type' : 'Save Type'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={Boolean(deleteTypeId)}
         onClose={() => setDeleteTypeId(null)}
         onConfirm={handleDelete}
-        title="Delete Room Configuration"
-        message="Are you sure you want to delete this room type? If any rooms are currently configured with this type, database constraints will prevent deletion."
+        title="Delete Room Type"
+        message="Are you sure you want to delete this room type? Rooms utilizing this configuration may be affected."
         confirmText="Confirm Delete"
         isLoading={saving}
       />

@@ -10,65 +10,34 @@ import {
   Key,
   Link2,
   AlertCircle,
-  Database
+  Database,
+  ChevronRight,
+  Layers
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { api } from '../services/api';
 
-// Helper to classify columns for responsive styling and wrapping prevention
-function getColumnCategory(colName = '', colType = '') {
-  const name = (colName || '').toLowerCase();
-  const type = (colType || '').toUpperCase();
-
-  if (name === 'dob' || name.includes('date') || name.includes('_day') || name.includes('_month') || name.includes('_year')) {
-    return 'date';
-  }
-  if (name.includes('phone') || name.includes('contact')) {
-    return 'phone';
-  }
-  if (name.endsWith('id') || name === 'id' || name.includes('_id') || name.includes('roomno')) {
-    return 'id';
-  }
-  if (name.includes('email')) {
-    return 'email';
-  }
-  if (name.includes('description') || name.includes('allergy') || name.includes('address')) {
-    return 'long-text';
-  }
-  if (
-    type.includes('INT') ||
-    type.includes('REAL') ||
-    type.includes('NUM') ||
-    name.includes('amount') ||
-    name.includes('rent') ||
-    name.includes('salary') ||
-    name.includes('cost') ||
-    name.includes('capacity')
-  ) {
-    return 'number';
-  }
-  return 'default';
-}
-
-function getColumnMinWidth(category) {
-  switch (category) {
-    case 'date':
-      return '130px';
-    case 'phone':
-      return '135px';
-    case 'id':
-      return '110px';
-    case 'email':
-      return '190px';
-    case 'long-text':
-      return '220px';
-    case 'number':
-      return '100px';
-    default:
-      return '120px';
-  }
-}
+const EXACT_18_TABLES = [
+  'WARDEN',
+  'WARDEN_PHONE',
+  'HOSTEL',
+  'ROOM_TYPE',
+  'ROOM',
+  'STUDENT',
+  'STUDENT_PHONE',
+  'MESS',
+  'MESS_CONTACT',
+  'MEAL',
+  'STAFF',
+  'STAFF_PHONE',
+  'SUPPLIER',
+  'SUPPLIER_PHONE',
+  'INVENTORY_ITEM',
+  'PROCURES',
+  'PAYMENT',
+  'PAYMENT_DETAIL'
+];
 
 export default function DatabaseTableView({ tableName, showToast }) {
   const [data, setData] = useState(null);
@@ -102,7 +71,7 @@ export default function DatabaseTableView({ tableName, showToast }) {
   }
 
   function handleSearchSubmit(e) {
-    e.preventDefault();
+    if (e) e.preventDefault();
     loadTableData();
   }
 
@@ -241,166 +210,125 @@ export default function DatabaseTableView({ tableName, showToast }) {
 
   return (
     <div>
-      {/* Table Header */}
+      {/* Header */}
       <div className="page-header">
         <div className="page-header-title">
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Database size={24} color="#2563eb" />
-            <h2>{tableName}</h2>
-            <span
+            <div
               style={{
-                background: 'rgba(37, 99, 235, 0.12)',
-                border: '1px solid rgba(37, 99, 235, 0.28)',
-                color: '#93c5fd',
-                fontSize: '0.74rem',
-                fontWeight: 600,
-                padding: '3px 8px',
-                borderRadius: 'var(--radius-sm)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em'
+                width: 36,
+                height: 36,
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #2563eb, #06b6d4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff'
               }}
             >
-              Relational Table
-            </span>
+              <Database size={20} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <h2>Database Studio: {tableName}</h2>
+                <span className="badge badge-info" style={{ fontFamily: 'var(--font-mono)' }}>
+                  RELATIONAL TABLE
+                </span>
+              </div>
+              <p>
+                Direct schema inspector with Primary Key / Foreign Key constraints across{' '}
+                <strong>{columns.length} columns</strong> and <strong>{data?.totalRows || 0} active rows</strong>
+              </p>
+            </div>
           </div>
-          <p>
-            Relational table containing all <strong>{columns.length} columns</strong> and{' '}
-            <strong>{data?.totalRows || 0} actual rows</strong> from <code>hostel.db</code>
-          </p>
         </div>
 
         <div className="page-actions">
           <button className="btn btn-secondary" onClick={() => setRefreshKey((k) => k + 1)}>
-            <RefreshCw size={15} />
-            Refresh
+            <RefreshCw size={14} />
+            <span>Refresh</span>
           </button>
           <button className="btn btn-secondary" onClick={exportCsv} disabled={rows.length === 0}>
-            <Download size={15} />
-            Export CSV
+            <Download size={14} />
+            <span>Export CSV</span>
           </button>
           <button className="btn btn-primary" onClick={handleOpenAddModal}>
             <Plus size={16} />
-            Insert Record
+            <span>Insert Record</span>
           </button>
         </div>
       </div>
 
-      {/* Search Bar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'flex-end',
-          marginBottom: 16,
-          gap: 12
-        }}
-      >
-        <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: 8 }}>
-          <div className="search-input-wrapper" style={{ minWidth: 220, maxWidth: 320 }}>
-            <Search size={14} />
-            <input
-              type="text"
-              className="search-input"
-              placeholder={`Search ${tableName}...`}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          <button type="submit" className="btn btn-secondary btn-sm">
-            Search
-          </button>
-          {searchTerm && (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={() => {
-                setSearchTerm('');
-                setRefreshKey((k) => k + 1);
-              }}
-            >
-              Clear
-            </button>
-          )}
-        </form>
-      </div>
-
-      {/* Relational Table with Horizontal Scrolling & ALL columns */}
       <div className="table-container">
-        <div className="data-table-wrapper" style={{ overflowX: 'auto', maxHeight: '72vh' }}>
+        {/* Toolbar */}
+        <div className="table-toolbar">
+          <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div className="search-input-wrapper">
+              <Search size={14} />
+              <input
+                type="text"
+                className="search-input"
+                placeholder={`Search records in ${tableName}...`}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <button type="submit" className="btn btn-secondary btn-sm">
+              Search
+            </button>
+            {searchTerm && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setSearchTerm('');
+                  setRefreshKey((k) => k + 1);
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </form>
+
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Showing <strong>{rows.length}</strong> record(s)
+          </span>
+        </div>
+
+        {/* Data Table */}
+        <div className="data-table-wrapper" style={{ maxHeight: '68vh', overflowY: 'auto' }}>
           <table className="data-table" style={{ width: 'max-content', minWidth: '100%' }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
               <tr>
-                {columns.map((col) => {
-                  const category = getColumnCategory(col.name, col.type);
-                  const minWidth = getColumnMinWidth(category);
-
-                  return (
-                    <th
-                      key={col.name}
-                      style={{
-                        padding: '12px 18px',
-                        background: 'var(--bg-table-header)',
-                        borderBottom: '1px solid var(--border-color)',
-                        whiteSpace: 'nowrap',
-                        minWidth: minWidth
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ color: '#fff', fontSize: '0.84rem', fontWeight: 700 }}>
-                          {col.name}
-                        </span>
-
-                        {col.keyBadge && (
-                          <span
-                            style={{
-                              fontSize: '0.74rem',
-                              fontWeight: 800,
-                              color: col.keyBadge === 'PK, FK' ? '#fef08a' : col.keyBadge === 'PK' ? '#fbbf24' : '#38bdf8'
-                            }}
-                          >
-                            ({col.keyBadge})
-                          </span>
-                        )}
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                {columns.map((col) => (
+                  <th key={col.name} style={{ whiteSpace: 'nowrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
+                        {col.name}
+                      </span>
+                      {col.keyBadge && (
                         <span
                           style={{
-                            fontSize: '0.68rem',
-                            color: '#64748b',
-                            fontFamily: 'var(--font-mono)'
+                            fontSize: '0.7rem',
+                            fontWeight: 800,
+                            color: col.keyBadge === 'PK' ? '#fbbf24' : '#38bdf8'
                           }}
                         >
-                          {col.type}
+                          ({col.keyBadge})
                         </span>
-                        {col.fkRef && (
-                          <span
-                            style={{
-                              fontSize: '0.65rem',
-                              color: '#38bdf8',
-                              fontFamily: 'var(--font-mono)'
-                            }}
-                            title={`References ${col.fkRef.table}(${col.fkRef.to})`}
-                          >
-                            → {col.fkRef.table}
-                          </span>
-                        )}
-                      </div>
-                    </th>
-                  );
-                })}
-                <th
-                  style={{
-                    padding: '12px 18px',
-                    background: 'var(--bg-table-header)',
-                    borderBottom: '1px solid var(--border-color)',
-                    textAlign: 'right',
-                    position: 'sticky',
-                    right: 0,
-                    zIndex: 11,
-                    minWidth: '100px'
-                  }}
-                >
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, fontSize: '0.68rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      <span>{col.type}</span>
+                      {col.fkRef && (
+                        <span style={{ color: '#38bdf8' }} title={`References ${col.fkRef.table}`}>
+                          → {col.fkRef.table}
+                        </span>
+                      )}
+                    </div>
+                  </th>
+                ))}
+                <th style={{ textAlign: 'right', position: 'sticky', right: 0, background: 'var(--bg-table-header)', zIndex: 11 }}>
                   Actions
                 </th>
               </tr>
@@ -408,19 +336,16 @@ export default function DatabaseTableView({ tableName, showToast }) {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={columns.length + 1} style={{ textAlign: 'center', padding: '50px 0' }}>
+                  <td colSpan={columns.length + 1} style={{ textAlign: 'center', padding: '50px 0', color: 'var(--text-muted)' }}>
                     <div className="spin-animation" style={{ display: 'inline-block', marginBottom: 8 }}>
-                      <RefreshCw size={24} color="#2563eb" />
+                      <Database size={24} color="var(--primary)" />
                     </div>
-                    <p style={{ color: '#94a3b8' }}>Loading {tableName} records from database...</p>
+                    <p>Loading table records from MySQL...</p>
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={columns.length + 1}
-                    style={{ textAlign: 'center', padding: '50px 0', color: '#94a3b8' }}
-                  >
+                  <td colSpan={columns.length + 1} style={{ textAlign: 'center', padding: '50px 0', color: 'var(--text-muted)' }}>
                     No records found in table <strong>{tableName}</strong>.
                   </td>
                 </tr>
@@ -430,92 +355,26 @@ export default function DatabaseTableView({ tableName, showToast }) {
                     {columns.map((col) => {
                       const val = row[col.name];
                       const isNull = val === null || val === undefined;
-                      const category = getColumnCategory(col.name, col.type);
-                      const minWidth = getColumnMinWidth(category);
-                      const isLongText = category === 'long-text';
 
                       return (
                         <td
                           key={col.name}
                           style={{
-                            padding: '12px 18px',
-                            whiteSpace: isLongText ? 'normal' : 'nowrap',
-                            minWidth: minWidth,
-                            maxWidth: isLongText ? '320px' : undefined,
-                            fontFamily:
-                              category === 'date' || category === 'id' || category === 'phone' || category === 'number' || col.isPk
-                                ? 'var(--font-mono)'
-                                : 'inherit',
-                            fontSize: '0.84rem'
+                            whiteSpace: 'nowrap',
+                            fontFamily: col.isPk || col.isFk || typeof val === 'number' ? 'var(--font-mono)' : 'inherit',
+                            color: col.isPk ? 'var(--text-primary)' : col.isFk ? '#38bdf8' : typeof val === 'number' ? '#34d399' : 'var(--text-secondary)'
                           }}
                         >
                           {isNull ? (
-                            <span
-                              style={{
-                                display: 'inline-block',
-                                padding: '2px 8px',
-                                borderRadius: '4px',
-                                background: 'rgba(239, 68, 68, 0.1)',
-                                border: '1px solid rgba(239, 68, 68, 0.25)',
-                                color: '#f87171',
-                                fontSize: '0.72rem',
-                                fontWeight: 700,
-                                fontStyle: 'italic'
-                              }}
-                            >
-                              NULL
-                            </span>
-                          ) : col.isPk ? (
-                            <span style={{ display: 'inline-block', whiteSpace: 'nowrap', fontWeight: 700, color: '#fff' }}>
-                              {String(val)}
-                            </span>
-                          ) : col.isFk ? (
-                            <span style={{ display: 'inline-block', whiteSpace: 'nowrap', color: '#38bdf8', fontWeight: 500 }}>
-                              {String(val)}
-                            </span>
-                          ) : category === 'date' ? (
-                            <span
-                              style={{
-                                display: 'inline-block',
-                                whiteSpace: 'nowrap',
-                                minWidth: '100px',
-                                letterSpacing: '0.02em',
-                                color: '#cbd5e1'
-                              }}
-                            >
-                              {String(val)}
-                            </span>
-                          ) : typeof val === 'number' ? (
-                            <span style={{ display: 'inline-block', whiteSpace: 'nowrap', color: '#34d399', fontWeight: 600 }}>
-                              {String(val)}
-                            </span>
+                            <span style={{ color: '#f87171', fontStyle: 'italic', fontSize: '0.74rem' }}>NULL</span>
                           ) : (
-                            <span
-                              style={{
-                                display: isLongText ? 'inline' : 'inline-block',
-                                whiteSpace: isLongText ? 'normal' : 'nowrap',
-                                color: '#cbd5e1'
-                              }}
-                            >
-                              {String(val)}
-                            </span>
+                            String(val)
                           )}
                         </td>
                       );
                     })}
 
-                    {/* Action buttons */}
-                    <td
-                      style={{
-                        padding: '12px 18px',
-                        textAlign: 'right',
-                        whiteSpace: 'nowrap',
-                        background: 'var(--bg-card)',
-                        position: 'sticky',
-                        right: 0,
-                        minWidth: '100px'
-                      }}
-                    >
+                    <td style={{ textAlign: 'right', position: 'sticky', right: 0, background: 'var(--bg-card)', zIndex: 9 }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         <button
                           className="btn btn-secondary btn-icon btn-sm"
@@ -539,25 +398,6 @@ export default function DatabaseTableView({ tableName, showToast }) {
             </tbody>
           </table>
         </div>
-
-        {/* Footer info */}
-        <div
-          style={{
-            padding: '14px 20px',
-            borderTop: '1px solid var(--border-color)',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            fontSize: '0.82rem',
-            color: '#94a3b8'
-          }}
-        >
-          <div>
-            Showing <strong>{rows.length}</strong> of <strong>{data?.totalRows || 0}</strong> record(s) in{' '}
-            <strong style={{ color: '#fff' }}>{tableName}</strong>
-          </div>
-          <div>All attributes rendered from database (Zero columns omitted)</div>
-        </div>
       </div>
 
       {/* Insert Record Modal */}
@@ -565,44 +405,31 @@ export default function DatabaseTableView({ tableName, showToast }) {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         title={`Insert Record into ${tableName}`}
-        maxWidth="680px"
+        maxWidth="620px"
       >
         <form onSubmit={handleSaveNewRow}>
           <div className="form-grid">
-            {columns.map((col) => {
-              const isAutoIncrement = col.isPk && col.type.includes('INT');
-              return (
-                <div
-                  key={col.name}
-                  className={`form-group ${col.type.includes('TEXT') && col.name.includes('address') ? 'form-grid-full' : ''}`}
-                >
-                  <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span>
-                      {col.name}
-                    </span>
-                    <span style={{ color: '#94a3b8', fontSize: '0.72rem', fontFamily: 'var(--font-mono)' }}>
-                      {col.type} {col.keyBadge ? `(${col.keyBadge})` : ''}
-                    </span>
-                  </label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder={isAutoIncrement ? 'Auto-assigned if left blank' : `Enter ${col.name}`}
-                    value={formData[col.name] || ''}
-                    onChange={(e) => setFormData({ ...formData, [col.name]: e.target.value })}
-                  />
-                </div>
-              );
-            })}
+            {columns.map((col) => (
+              <div key={col.name} className="form-group">
+                <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{col.name}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'var(--font-mono)' }}>
+                    {col.type} {col.keyBadge ? `(${col.keyBadge})` : ''}
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder={`Enter ${col.name}`}
+                  value={formData[col.name] || ''}
+                  onChange={(e) => setFormData({ ...formData, [col.name]: e.target.value })}
+                />
+              </div>
+            ))}
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setIsAddModalOpen(false)}
-              disabled={saving}
-            >
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--bg-card-border)' }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setIsAddModalOpen(false)} disabled={saving}>
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
@@ -618,22 +445,17 @@ export default function DatabaseTableView({ tableName, showToast }) {
           isOpen={true}
           onClose={() => setEditingRow(null)}
           title={`Edit Record in ${tableName}`}
-          maxWidth="680px"
+          maxWidth="620px"
         >
           <form onSubmit={handleSaveEditRow}>
             <div className="form-grid">
               {columns.map((col) => {
                 const isPk = col.isPk;
                 return (
-                  <div
-                    key={col.name}
-                    className={`form-group ${col.type.includes('TEXT') && col.name.includes('address') ? 'form-grid-full' : ''}`}
-                  >
+                  <div key={col.name} className="form-group">
                     <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>
-                        {col.name}
-                      </span>
-                      <span style={{ color: isPk ? '#fbbf24' : '#94a3b8', fontSize: '0.72rem', fontFamily: 'var(--font-mono)' }}>
+                      <span>{col.name}</span>
+                      <span style={{ color: isPk ? '#fbbf24' : 'var(--text-muted)', fontSize: '0.72rem', fontFamily: 'var(--font-mono)' }}>
                         {col.type} {col.keyBadge ? `(${col.keyBadge})` : ''}
                       </span>
                     </label>
@@ -641,7 +463,7 @@ export default function DatabaseTableView({ tableName, showToast }) {
                       type="text"
                       className="form-input"
                       disabled={isPk}
-                      style={isPk ? { opacity: 0.6, cursor: 'not-allowed', background: '#070b14' } : {}}
+                      style={isPk ? { opacity: 0.6, cursor: 'not-allowed', background: 'var(--bg-input)' } : {}}
                       value={formData[col.name] !== undefined ? formData[col.name] : ''}
                       onChange={(e) => setFormData({ ...formData, [col.name]: e.target.value })}
                     />
@@ -650,13 +472,8 @@ export default function DatabaseTableView({ tableName, showToast }) {
               })}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setEditingRow(null)}
-                disabled={saving}
-              >
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--bg-card-border)' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setEditingRow(null)} disabled={saving}>
                 Cancel
               </button>
               <button type="submit" className="btn btn-primary" disabled={saving}>
@@ -673,7 +490,7 @@ export default function DatabaseTableView({ tableName, showToast }) {
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleConfirmDelete}
         title={`Delete Record from ${tableName}`}
-        message="Are you sure you want to permanently delete this row? If foreign key constraints reference this record in other tables, database constraints will protect the relationship and reject deletion."
+        message="Are you sure you want to permanently delete this row? Relational foreign key constraints will protect dependent records."
         confirmText="Delete Record"
         isLoading={saving}
       />

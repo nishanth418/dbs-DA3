@@ -1,21 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { FileBarChart2, Download, Code, Play, Search, Clock, Check } from 'lucide-react';
+import {
+  FileBarChart2,
+  Download,
+  Code,
+  Copy,
+  Check,
+  Search,
+  Clock,
+  Layers,
+  Sparkles,
+  ChevronRight
+} from 'lucide-react';
 import { api } from '../services/api';
 
 const REPORTS = [
-  { key: 'student-room-hostel', title: '1. Student + Room + Hostel' },
-  { key: 'student-phones', title: '2. Student + Student Phone' },
-  { key: 'hostel-warden', title: '3. Hostel + Warden' },
-  { key: 'room-type-hostel', title: '4. Room + Room Type + Hostel' },
-  { key: 'mess-meal', title: '5. Mess + Meal' },
-  { key: 'mess-staff', title: '6. Mess + Staff' },
-  { key: 'supplier-inventory', title: '7. Supplier + Inventory' },
-  { key: 'procurement-supplier-inventory', title: '8. Procurement + Supplier + Inventory' },
-  { key: 'student-payment', title: '9. Student + Payment' },
-  { key: 'hostel-occupancy', title: '10. Overall Hostel Occupancy' },
-  { key: 'available-rooms', title: '11. Available Rooms' },
-  { key: 'student-payment-summary', title: '12. Student Payment Summary' },
-  { key: 'inventory-procurement-summary', title: '13. Inventory & Procurement Summary' }
+  { key: 'student-room-hostel', title: '1. Student + Room + Hostel', category: 'Occupancy' },
+  { key: 'student-phones', title: '2. Student + Student Phone', category: 'Contact Registry' },
+  { key: 'hostel-warden', title: '3. Hostel + Warden', category: 'Supervision' },
+  { key: 'room-type-hostel', title: '4. Room + Room Type + Hostel', category: 'Architecture' },
+  { key: 'mess-meal', title: '5. Mess + Meal Schedule', category: 'Dining' },
+  { key: 'mess-staff', title: '6. Mess + Staff Deployment', category: 'Operations' },
+  { key: 'supplier-inventory', title: '7. Supplier + Inventory', category: 'Supply Chain' },
+  { key: 'procurement-supplier-inventory', title: '8. Procurement Ledger Breakdown', category: 'Supply Chain' },
+  { key: 'student-payment', title: '9. Student + Fee Transactions', category: 'Finance' },
+  { key: 'hostel-occupancy', title: '10. Overall Hostel Occupancy Rate', category: 'Analytics' },
+  { key: 'available-rooms', title: '11. Vacant & Available Rooms', category: 'Occupancy' },
+  { key: 'student-payment-summary', title: '12. Student Total Fee Summary', category: 'Finance' },
+  { key: 'inventory-procurement-summary', title: '13. Inventory & Procurement Aggregate', category: 'Supply Chain' }
 ];
 
 export default function ReportsPage({ showToast }) {
@@ -23,7 +34,6 @@ export default function ReportsPage({ showToast }) {
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showSql, setShowSql] = useState(false);
-  const [filterTerm, setFilterTerm] = useState('');
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -66,7 +76,7 @@ export default function ReportsPage({ showToast }) {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    showToast('Report downloaded as CSV', 'success');
+    showToast('Report dataset exported as CSV', 'success');
   }
 
   function copySql() {
@@ -74,91 +84,85 @@ export default function ReportsPage({ showToast }) {
     navigator.clipboard.writeText(reportData.sql);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-    showToast('SQL Query copied to clipboard', 'info');
+    showToast('SQL query copied to clipboard', 'info');
   }
 
-  const columns = reportData?.data && reportData.data.length > 0 ? Object.keys(reportData.data[0]) : [];
-
-  const filteredData = (reportData?.data || []).filter((row) => {
-    if (!filterTerm) return true;
-    return Object.values(row).some((val) =>
-      String(val).toLowerCase().includes(filterTerm.toLowerCase())
-    );
-  });
+  const rows = reportData?.data || [];
+  const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+  const currentReportObj = REPORTS.find((r) => r.key === selectedKey) || REPORTS[0];
 
   return (
     <div>
+      {/* Header */}
       <div className="page-header">
         <div className="page-header-title">
-          <h2>Multi-Table Relational Reports</h2>
-          <p>Complex analytical reports generated across 18 relational tables using SQL JOINs</p>
-        </div>
-        <div className="page-actions">
-          <button className="btn btn-secondary" onClick={() => setShowSql(!showSql)}>
-            <Code size={16} />
-            {showSql ? 'Hide SQL' : 'View SQL'}
-          </button>
-          <button className="btn btn-primary" onClick={exportCsv} disabled={!reportData?.data?.length}>
-            <Download size={16} />
-            Export CSV
-          </button>
-        </div>
-      </div>
-
-      {/* Report Selector Pills */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 8,
-          overflowX: 'auto',
-          paddingBottom: 14,
-          marginBottom: 20
-        }}
-      >
-        {REPORTS.map((r) => {
-          const isSelected = selectedKey === r.key;
-          return (
-            <button
-              key={r.key}
-              onClick={() => setSelectedKey(r.key)}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
               style={{
-                padding: '7px 14px',
-                borderRadius: 'var(--radius-sm)',
-                background: isSelected ? 'var(--primary)' : 'var(--bg-card)',
-                border: `1px solid ${isSelected ? 'var(--primary)' : 'var(--border-color)'}`,
-                color: isSelected ? '#fff' : 'var(--text-secondary)',
-                fontWeight: isSelected ? 600 : 500,
-                fontSize: '0.82rem',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.15s ease'
+                width: 36,
+                height: 36,
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #2563eb, #06b6d4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff'
               }}
             >
-              {r.title}
-            </button>
-          );
-        })}
+              <FileBarChart2 size={20} />
+            </div>
+            <div>
+              <h2>Institutional Analytical Reports</h2>
+              <p>13 complex relational views across multi-table joins, room rents, occupancy, and inventory flows</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="page-actions">
+          <button className="btn btn-secondary" onClick={() => setShowSql(!showSql)}>
+            <Code size={15} />
+            <span>{showSql ? 'Hide SQL Query' : 'Inspect SQL Query'}</span>
+          </button>
+          <button className="btn btn-primary" onClick={exportCsv} disabled={rows.length === 0}>
+            <Download size={15} />
+            <span>Export CSV</span>
+          </button>
+        </div>
       </div>
 
-      {/* SQL Query Inspector Panel */}
+      {/* SQL Inspection Drawer */}
       {showSql && reportData?.sql && (
-        <div className="panel" style={{ background: '#0c101c', border: '1px solid rgba(37, 99, 235, 0.3)', marginBottom: 20 }}>
+        <div
+          className="panel"
+          style={{
+            marginBottom: 24,
+            background: '#070b14',
+            border: '1px solid rgba(56, 189, 248, 0.3)',
+            borderRadius: '12px',
+            padding: '16px 20px'
+          }}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <span style={{ fontSize: '0.78rem', color: '#93c5fd', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
-              Underlying SQL Query
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#38bdf8', fontFamily: 'var(--font-mono)' }}>
+              UNDERLYING RELATIONAL SQL (MYSQL 8.4)
             </span>
-            <button className="btn btn-secondary btn-sm" onClick={copySql}>
-              {copied ? <Check size={14} color="#10b981" /> : <Code size={14} />}
-              <span>{copied ? 'Copied!' : 'Copy SQL'}</span>
+            <button
+              onClick={copySql}
+              className="btn btn-secondary btn-sm"
+              style={{ padding: '3px 10px', fontSize: '0.75rem' }}
+            >
+              {copied ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
+              <span>{copied ? 'Copied' : 'Copy SQL'}</span>
             </button>
           </div>
           <pre
             style={{
               fontFamily: 'var(--font-mono)',
               fontSize: '0.84rem',
-              color: '#38bdf8',
-              whiteSpace: 'pre-wrap',
-              lineHeight: 1.6
+              color: '#f8fafc',
+              lineHeight: 1.6,
+              overflowX: 'auto',
+              margin: 0
             }}
           >
             {reportData.sql}
@@ -166,112 +170,140 @@ export default function ReportsPage({ showToast }) {
         </div>
       )}
 
-      {/* Report Info & Results */}
-      <div className="table-container">
-        <div className="table-toolbar">
-          <div>
-            <h3 style={{ color: '#fff', fontSize: '1.05rem', fontWeight: 700 }}>
-              {reportData?.title || 'Report Results'}
-            </h3>
-            <p style={{ color: '#94a3b8', fontSize: '0.82rem' }}>{reportData?.description}</p>
+      {/* Main Grid: Report Selector + Table Results */}
+      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 20 }}>
+        {/* Left: 13 Reports Navigator List */}
+        <div className="panel" style={{ padding: '14px', height: 'fit-content' }}>
+          <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12, paddingBottom: 8, borderBottom: '1px solid var(--bg-card-border)' }}>
+            13 Relational Reports
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#38bdf8', fontSize: '0.8rem' }}>
-              <Clock size={14} />
-              <span>{reportData?.executionTimeMs || 0} ms</span>
-            </div>
-
-            <div className="search-input-wrapper" style={{ minWidth: 220, maxWidth: 300 }}>
-              <Search size={14} />
-              <input
-                type="text"
-                className="search-input"
-                placeholder="Filter results..."
-                value={filterTerm}
-                onChange={(e) => setFilterTerm(e.target.value)}
-              />
-            </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {REPORTS.map((r) => {
+              const isSelected = selectedKey === r.key;
+              return (
+                <button
+                  key={r.key}
+                  onClick={() => setSelectedKey(r.key)}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: isSelected ? 'rgba(37, 99, 235, 0.18)' : 'transparent',
+                    border: isSelected ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid transparent',
+                    color: isSelected ? '#ffffff' : 'var(--text-secondary)',
+                    fontSize: '0.82rem',
+                    fontFamily: 'var(--font-heading)',
+                    fontWeight: isSelected ? 700 : 500,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)';
+                      e.currentTarget.style.color = 'var(--text-primary)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = 'var(--text-secondary)';
+                    }
+                  }}
+                >
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {r.title}
+                  </span>
+                  <ChevronRight size={14} color={isSelected ? 'var(--primary)' : 'transparent'} />
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="data-table-wrapper" style={{ overflowX: 'auto' }}>
-          <table className="data-table" style={{ width: 'max-content', minWidth: '100%' }}>
-            <thead>
-              <tr>
-                {columns.map((col) => {
-                  const cLower = col.toLowerCase();
-                  const isDate = cLower === 'dob' || cLower.includes('date');
-                  const isPhone = cLower.includes('phone') || cLower.includes('contact');
-                  const isId = cLower.endsWith('id') || cLower.includes('roomno');
-                  const minWidth = isDate ? '130px' : isPhone ? '135px' : isId ? '110px' : 'auto';
+        {/* Right: Selected Report Data Table */}
+        <div className="table-container">
+          <div className="table-toolbar">
+            <div>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {currentReportObj.title}
+              </h3>
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                Category: <strong>{currentReportObj.category}</strong>
+              </p>
+            </div>
 
-                  return (
-                    <th key={col} style={{ whiteSpace: 'nowrap', minWidth }}>
-                      {col.replace(/_/g, ' ')}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={columns.length || 1} style={{ textAlign: 'center', padding: '40px 0' }}>
-                    Executing SQL Report...
-                  </td>
-                </tr>
-              ) : filteredData.length === 0 ? (
-                <tr>
-                  <td colSpan={columns.length || 1} style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                    No rows returned for this query.
-                  </td>
-                </tr>
-              ) : (
-                filteredData.map((row, idx) => (
-                  <tr key={idx}>
-                    {columns.map((col) => {
-                      const val = row[col];
-                      const cLower = col.toLowerCase();
-                      const isDate = cLower === 'dob' || cLower.includes('date');
-                      const isPhone = cLower.includes('phone') || cLower.includes('contact');
-                      const isId = cLower.endsWith('id') || cLower.includes('roomno');
-                      const isNum = typeof val === 'number';
-
-                      return (
-                        <td
-                          key={col}
-                          style={{
-                            color: isNum ? '#10b981' : isId ? '#38bdf8' : '#cbd5e1',
-                            whiteSpace: 'nowrap',
-                            minWidth: isDate ? '130px' : undefined,
-                            fontFamily: isDate || isId || isPhone || isNum ? 'var(--font-mono)' : 'inherit'
-                          }}
-                        >
-                          {val === null || val === undefined ? (
-                            '-'
-                          ) : isDate ? (
-                            <span style={{ display: 'inline-block', whiteSpace: 'nowrap', minWidth: '100px', letterSpacing: '0.02em' }}>
-                              {String(val)}
-                            </span>
-                          ) : (
-                            <span style={{ display: 'inline-block', whiteSpace: 'nowrap' }}>
-                              {String(val)}
-                            </span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span className="badge badge-success">{rows.length} Record(s)</span>
+              {reportData?.executionTimeMs !== undefined && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#38bdf8', fontSize: '0.76rem', fontFamily: 'var(--font-mono)' }}>
+                  <Clock size={12} />
+                  <span>{reportData.executionTimeMs} ms</span>
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          </div>
 
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-color)', color: '#94a3b8', fontSize: '0.8rem', display: 'flex', justifyContent: 'space-between' }}>
-          <span>Showing {filteredData.length} records</span>
-          <span>Database: hostel.db</span>
+          <div className="data-table-wrapper" style={{ maxHeight: '68vh', overflowY: 'auto' }}>
+            <table className="data-table" style={{ width: 'max-content', minWidth: '100%' }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                <tr>
+                  {columns.map((col) => (
+                    <th key={col} style={{ whiteSpace: 'nowrap' }}>
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={columns.length || 1} style={{ textAlign: 'center', padding: '50px 0', color: 'var(--text-muted)' }}>
+                      <div className="spin-animation" style={{ display: 'inline-block', marginBottom: 8 }}>
+                        <FileBarChart2 size={24} color="var(--primary)" />
+                      </div>
+                      <p>Computing relational joins from MySQL...</p>
+                    </td>
+                  </tr>
+                ) : rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length || 1} style={{ textAlign: 'center', padding: '50px 0', color: 'var(--text-muted)' }}>
+                      No data returned for this view.
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((row, rIdx) => (
+                    <tr key={rIdx}>
+                      {columns.map((col) => {
+                        const val = row[col];
+                        const isNum = typeof val === 'number';
+                        return (
+                          <td
+                            key={col}
+                            style={{
+                              whiteSpace: 'nowrap',
+                              fontFamily: isNum || col.toLowerCase().includes('id') ? 'var(--font-mono)' : 'inherit',
+                              color: isNum ? '#10b981' : 'var(--text-primary)'
+                            }}
+                          >
+                            {val === null || val === undefined ? (
+                              <span style={{ color: '#f87171', fontStyle: 'italic', fontSize: '0.75rem' }}>NULL</span>
+                            ) : (
+                              String(val)
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

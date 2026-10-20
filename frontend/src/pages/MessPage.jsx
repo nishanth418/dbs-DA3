@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Utensils, Phone } from 'lucide-react';
+import { Plus, Edit2, Trash2, Utensils, Phone, MapPin, Users, Coffee } from 'lucide-react';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { api } from '../services/api';
@@ -18,7 +18,7 @@ export default function MessPage({ showToast }) {
     mess_name: '',
     hostel_id: '',
     capacity: 300,
-    type: 'Both',
+    type: 'Pure Veg',
     contacts: ''
   });
   const [errors, setErrors] = useState({});
@@ -46,7 +46,7 @@ export default function MessPage({ showToast }) {
       mess_name: '',
       hostel_id: hostels[0]?.hostel_id ? String(hostels[0].hostel_id) : '',
       capacity: 300,
-      type: 'Both',
+      type: 'Pure Veg',
       contacts: ''
     });
     setErrors({});
@@ -59,11 +59,11 @@ export default function MessPage({ showToast }) {
       const data = res.data;
       setEditingMess(data);
       setFormData({
-        mess_name: data.mess_name,
+        mess_name: data.mess_name || data.MessName || '',
         hostel_id: data.hostel_id ? String(data.hostel_id) : '',
-        capacity: data.capacity,
-        type: data.type,
-        contacts: data.contacts ? data.contacts.join(', ') : ''
+        capacity: data.capacity || 300,
+        type: data.type || data.MessType || 'Pure Veg',
+        contacts: data.contacts ? data.contacts.join(', ') : (data.contact_numbers || '')
       });
       setErrors({});
       setIsModalOpen(true);
@@ -74,8 +74,7 @@ export default function MessPage({ showToast }) {
 
   function validate() {
     const errs = {};
-    if (!formData.mess_name.trim()) errs.mess_name = 'Mess hall name is required';
-    if (!formData.capacity || formData.capacity <= 0) errs.capacity = 'Capacity must be at least 1';
+    if (!formData.mess_name.trim()) errs.mess_name = 'Mess facility name is required';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -87,19 +86,19 @@ export default function MessPage({ showToast }) {
     try {
       setSaving(true);
       const payload = {
-        mess_name: formData.mess_name,
-        hostel_id: formData.hostel_id ? Number(formData.hostel_id) : null,
+        ...formData,
         capacity: Number(formData.capacity),
-        type: formData.type,
-        contacts: formData.contacts ? formData.contacts.split(',').map((c) => c.trim()).filter(Boolean) : []
+        contacts: formData.contacts
+          ? formData.contacts.split(',').map((c) => c.trim()).filter(Boolean)
+          : []
       };
 
       if (editingMess) {
-        await api.updateMess(editingMess.mess_id, payload);
-        showToast('Mess updated successfully', 'success');
+        await api.updateMess(editingMess.mess_id || editingMess.MessID, payload);
+        showToast('Mess facility details updated', 'success');
       } else {
         await api.createMess(payload);
-        showToast('Mess created successfully', 'success');
+        showToast('New mess facility registered', 'success');
       }
       setIsModalOpen(false);
       loadData();
@@ -114,7 +113,7 @@ export default function MessPage({ showToast }) {
     try {
       setSaving(true);
       await api.deleteMess(deleteMessId);
-      showToast('Mess deleted successfully', 'success');
+      showToast('Mess facility deleted successfully', 'success');
       setDeleteMessId(null);
       loadData();
     } catch (err) {
@@ -128,107 +127,96 @@ export default function MessPage({ showToast }) {
     <div>
       <div className="page-header">
         <div className="page-header-title">
-          <h2>Mess Halls & Dining Facilities</h2>
-          <p>Mess dining halls, dietary plans, contact hotlines, and kitchen assignments</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #2563eb, #06b6d4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff'
+              }}
+            >
+              <Utensils size={20} />
+            </div>
+            <div>
+              <h2>Mess & Dining Facility Management</h2>
+              <p>Campus dining halls, daily seating capacity, diet categories, and helpdesk contact details</p>
+            </div>
+          </div>
         </div>
+
         <div className="page-actions">
           <button className="btn btn-primary" onClick={openCreateModal}>
             <Plus size={16} />
-            Add New Mess
+            <span>Add Dining Facility</span>
           </button>
         </div>
       </div>
 
-      <div className="table-container">
-        <div className="data-table-wrapper">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Mess Name</th>
-                <th>Dietary Type</th>
-                <th>Seating Capacity</th>
-                <th>Associated Hostel</th>
-                <th>Contact Hotline</th>
-                <th>Staff Active</th>
-                <th>Scheduled Meals</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '40px 0' }}>
-                    Loading mess facilities...
-                  </td>
-                </tr>
-              ) : messList.length === 0 ? (
-                <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                    No mess facilities registered.
-                  </td>
-                </tr>
-              ) : (
-                messList.map((m) => (
-                  <tr key={m.mess_id}>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>#{m.mess_id}</td>
-                    <td style={{ fontWeight: 600, color: '#fff' }}>{m.mess_name}</td>
-                    <td>
-                      <span className={`badge ${m.type === 'Veg' ? 'badge-success' : m.type === 'Non-Veg' ? 'badge-danger' : 'badge-info'}`}>
-                        {m.type}
-                      </span>
-                    </td>
-                    <td>{m.capacity} Seats</td>
-                    <td>{m.hostel_name || 'Central Facility'}</td>
-                    <td style={{ fontSize: '0.82rem', color: '#cbd5e1' }}>
-                      {m.contact_numbers || 'No direct phone'}
-                    </td>
-                    <td>
-                      <span className="badge badge-warning">{m.staff_count || 0} Staff</span>
-                    </td>
-                    <td>
-                      <span style={{ color: '#38bdf8', fontWeight: 600 }}>{m.total_meals_scheduled || 0} Meals</span>
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <button
-                          className="btn btn-secondary btn-icon btn-sm"
-                          onClick={() => openEditModal(m)}
-                          title="Edit mess"
-                        >
-                          <Edit2 size={14} />
-                        </button>
-                        <button
-                          className="btn btn-danger btn-icon btn-sm"
-                          onClick={() => setDeleteMessId(m.mess_id)}
-                          title="Delete mess"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20 }}>
+        {messList.map((m) => (
+          <div key={m.mess_id} className="panel" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                <span className="badge badge-success">{m.type || m.MessType || 'Dining'}</span>
+                <span style={{ fontSize: '0.78rem', fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                  ID: #{m.mess_id}
+                </span>
+              </div>
+
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: 8 }}>
+                {m.mess_name || m.MessName}
+              </h3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.86rem', color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Users size={16} color="var(--primary)" />
+                  <span>Seating Capacity: <strong style={{ color: 'var(--text-primary)' }}>{m.capacity || 300} Students</strong></span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <MapPin size={16} color="#f59e0b" />
+                  <span>{m.location || m.Location || 'Campus Food Court'}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Phone size={16} color="#10b981" />
+                  <span style={{ fontFamily: 'var(--font-mono)' }}>{m.contact_numbers || '044-220011'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20, paddingTop: 14, borderTop: '1px solid var(--bg-card-border)' }}>
+              <button className="btn btn-secondary btn-sm" onClick={() => openEditModal(m)}>
+                <Edit2 size={13} />
+                <span>Edit</span>
+              </button>
+              <button className="btn btn-danger btn-sm" onClick={() => setDeleteMessId(m.mess_id)}>
+                <Trash2 size={13} />
+                <span>Delete</span>
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Add / Edit Modal */}
+      {/* Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingMess ? `Edit Mess: ${editingMess.mess_name}` : 'Register New Dining Facility'}
+        title={editingMess ? `Edit Mess: ${editingMess.mess_name || editingMess.MessName}` : 'Register Dining Facility'}
+        maxWidth="540px"
       >
         <form onSubmit={handleSave}>
           <div className="form-grid">
             <div className="form-group form-grid-full">
-              <label className="form-label">Mess Facility Name *</label>
+              <label className="form-label">Dining Facility Name *</label>
               <input
                 type="text"
                 className="form-input"
-                placeholder="e.g. Annapoorna North Dining"
+                placeholder="e.g. North Dining Hall, Executive Mess"
                 value={formData.mess_name}
                 onChange={(e) => setFormData({ ...formData, mess_name: e.target.value })}
               />
@@ -236,46 +224,29 @@ export default function MessPage({ showToast }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Dietary Provision *</label>
+              <label className="form-label">Dietary Category</label>
               <select
                 className="form-select"
                 value={formData.type}
                 onChange={(e) => setFormData({ ...formData, type: e.target.value })}
               >
-                <option value="Both">Both (Veg & Non-Veg)</option>
-                <option value="Veg">Pure Vegetarian</option>
-                <option value="Non-Veg">Non-Veg</option>
-                <option value="Special">Special Diet</option>
+                <option value="Pure Veg">Pure Veg</option>
+                <option value="Non-Veg Special">Non-Veg Special</option>
+                <option value="Mixed">Mixed (Veg & Non-Veg)</option>
+                <option value="Quick Bites">Quick Bites & Snacks</option>
               </select>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Dining Capacity (Seats) *</label>
+              <label className="form-label">Seating Capacity</label>
               <input
                 type="number"
+                min="50"
+                max="2000"
                 className="form-input"
-                min="10"
-                step="10"
                 value={formData.capacity}
                 onChange={(e) => setFormData({ ...formData, capacity: e.target.value })}
               />
-              {errors.capacity && <span className="form-error">{errors.capacity}</span>}
-            </div>
-
-            <div className="form-group form-grid-full">
-              <label className="form-label">Associated Hostel Building</label>
-              <select
-                className="form-select"
-                value={formData.hostel_id}
-                onChange={(e) => setFormData({ ...formData, hostel_id: e.target.value })}
-              >
-                <option value="">Campus Central Mess (No specific hostel)</option>
-                {hostels.map((h) => (
-                  <option key={h.hostel_id} value={h.hostel_id}>
-                    {h.name}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <div className="form-group form-grid-full">
@@ -283,36 +254,30 @@ export default function MessPage({ showToast }) {
               <input
                 type="text"
                 className="form-input"
-                placeholder="+91-11-27891001, +91-9811002233"
+                placeholder="044-220011, 044-220012"
                 value={formData.contacts}
                 onChange={(e) => setFormData({ ...formData, contacts: e.target.value })}
               />
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setIsModalOpen(false)}
-              disabled={saving}
-            >
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--bg-card-border)' }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)} disabled={saving}>
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : editingMess ? 'Update Mess' : 'Create Mess'}
+              {saving ? 'Saving...' : editingMess ? 'Update Mess' : 'Register Mess'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={Boolean(deleteMessId)}
         onClose={() => setDeleteMessId(null)}
         onConfirm={handleDelete}
-        title="Delete Mess Facility"
-        message="Are you sure you want to delete this mess facility? Associated meal schedules and contacts will be removed, and staff assignments will be reset."
+        title="Delete Dining Facility"
+        message="Are you sure you want to delete this mess? Meals and staff members assigned to this mess will be affected by foreign keys."
         confirmText="Confirm Delete"
         isLoading={saving}
       />

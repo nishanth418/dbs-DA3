@@ -2,9 +2,16 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
 import Toast from './components/Toast';
+import Footer from './components/Footer';
+import CommandPalette from './components/CommandPalette';
 import { api } from './services/api';
 
-// Pages
+// Intro & Auth Pages
+import IntroPage from './pages/IntroPage';
+import LoginPage from './pages/LoginPage';
+import SettingsPage from './pages/SettingsPage';
+
+// Management & Analytics Pages
 import DashboardPage from './pages/DashboardPage';
 import StudentsPage from './pages/StudentsPage';
 import HostelsPage from './pages/HostelsPage';
@@ -23,16 +30,68 @@ import SqlQueryPage from './pages/SqlQueryPage';
 import DatabaseTableView from './pages/DatabaseTableView';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
 import TermsPage from './pages/TermsPage';
-import Footer from './components/Footer';
 
 export default function App() {
+  // Navigation & View Hierarchy ('intro' | 'login' | 'app')
+  const [currentView, setCurrentView] = useState(() => {
+    try {
+      const introCompleted = localStorage.getItem('nexus_intro_completed') === 'true';
+      if (!introCompleted) return 'intro';
+      const user = localStorage.getItem('nexus_auth_user') || sessionStorage.getItem('nexus_auth_user');
+      return user ? 'app' : 'login';
+    } catch (e) {
+      return 'intro';
+    }
+  });
+
+  // Current Logged-in User Session
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('nexus_auth_user') || sessionStorage.getItem('nexus_auth_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  // Active module tab
   const [activeTab, setActiveTab] = useState('dashboard');
+  
+  // Layout states
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+  // Global Toast Notifications
   const [toasts, setToasts] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [healthInfo, setHealthInfo] = useState(null);
 
+  // Theme Management ('dark' | 'light')
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem('nexus_theme') || 'dark';
+    } catch (e) {
+      return 'dark';
+    }
+  });
+
+  // Sync theme with DOM and localStorage
+  useEffect(() => {
+    try {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('nexus_theme', theme);
+    } catch (e) {
+      // ignore storage error
+    }
+  }, [theme]);
+
+  function toggleTheme() {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  }
+
+  // System Health Monitoring
   useEffect(() => {
     checkHealth();
   }, []);
@@ -64,29 +123,96 @@ export default function App() {
     checkHealth();
     setTimeout(() => {
       setIsRefreshing(false);
-      showToast('Data refreshed from database', 'info');
+      showToast('Database connection and metrics synced', 'info');
     }, 400);
   }
 
+  // Auth Handlers
+  function handleLoginSuccess(user) {
+    setCurrentUser(user);
+    setCurrentView('app');
+    showToast(`Welcome back, ${user.name || 'Campus Administrator'}`, 'success');
+  }
+
+  function handleLogout() {
+    try {
+      localStorage.removeItem('nexus_auth_user');
+      sessionStorage.removeItem('nexus_auth_user');
+    } catch (e) {
+      // ignore
+    }
+    setCurrentUser(null);
+    setCurrentView('login');
+    showToast('Securely signed out of Nexus Campus OS', 'info');
+  }
+
+  function handleReplayIntro() {
+    setCurrentView('intro');
+  }
+
+  function handleIntroComplete() {
+    try {
+      const saved = localStorage.getItem('nexus_auth_user') || sessionStorage.getItem('nexus_auth_user');
+      if (saved) {
+        setCurrentUser(JSON.parse(saved));
+        setCurrentView('app');
+      } else {
+        setCurrentView('login');
+      }
+    } catch (e) {
+      setCurrentView('login');
+    }
+  }
+
+  // Render 3D Cinematic Intro
+  if (currentView === 'intro') {
+    return <IntroPage onComplete={handleIntroComplete} />;
+  }
+
+  // Render Login Gateway
+  if (currentView === 'login') {
+    return (
+      <LoginPage
+        onLoginSuccess={handleLoginSuccess}
+        healthInfo={healthInfo}
+      />
+    );
+  }
+
+  // Render Main Enterprise Application Shell
   return (
     <div className="app-container">
       {/* Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}
         onSelectTab={setActiveTab}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
         mobileOpen={mobileOpen}
         onCloseMobile={() => setMobileOpen(false)}
         healthInfo={healthInfo}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Area */}
-      <div className="main-wrapper">
+      <div
+        className={`main-wrapper ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}
+        style={{
+          marginLeft: sidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)',
+          transition: 'margin-left var(--transition-normal)'
+        }}
+      >
         <Navbar
           activeTab={activeTab}
           onToggleMobile={() => setMobileOpen(!mobileOpen)}
           onRefresh={handleRefresh}
           isRefreshing={isRefreshing}
           healthInfo={healthInfo}
+          onOpenSearch={() => setCommandPaletteOpen(true)}
+          currentTheme={theme}
+          onToggleTheme={toggleTheme}
+          onReplayIntro={handleReplayIntro}
+          currentUser={currentUser}
         />
 
         <main className="page-content" key={refreshKey}>
@@ -105,6 +231,16 @@ export default function App() {
           {activeTab === 'payments' && <PaymentsPage showToast={showToast} />}
           {activeTab === 'reports' && <ReportsPage showToast={showToast} />}
           {activeTab === 'sql-query' && <SqlQueryPage showToast={showToast} />}
+          {activeTab === 'settings' && (
+            <SettingsPage
+              currentTheme={theme}
+              onToggleTheme={toggleTheme}
+              onReplayIntro={handleReplayIntro}
+              healthInfo={healthInfo}
+              onRefreshHealth={checkHealth}
+              showToast={showToast}
+            />
+          )}
           {activeTab === 'privacy' && <PrivacyPolicyPage onNavigate={setActiveTab} />}
           {activeTab === 'terms' && <TermsPage onNavigate={setActiveTab} />}
           {activeTab.startsWith('table_') && (
@@ -114,8 +250,16 @@ export default function App() {
             />
           )}
         </main>
+
         <Footer onNavigate={setActiveTab} />
       </div>
+
+      {/* Quick Command Palette (Ctrl+K) */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onSelect={(tabId) => setActiveTab(tabId)}
+      />
 
       {/* Global Toast Notifications */}
       <Toast toasts={toasts} onDismiss={dismissToast} />

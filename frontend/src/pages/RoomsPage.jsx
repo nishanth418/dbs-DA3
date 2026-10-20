@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, BedDouble, Filter } from 'lucide-react';
+import { Plus, Edit2, Trash2, BedDouble, Filter, Layers, CheckCircle2, AlertCircle, Building2 } from 'lucide-react';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { api } from '../services/api';
@@ -31,9 +31,22 @@ export default function RoomsPage({ showToast }) {
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
-    loadData();
     loadMeta();
+  }, []);
+
+  useEffect(() => {
+    loadData();
   }, [hostelFilter, typeFilter, statusFilter]);
+
+  async function loadMeta() {
+    try {
+      const [hRes, tRes] = await Promise.all([api.getHostels(), api.getRoomTypes()]);
+      setHostels(hRes.data);
+      setRoomTypes(tRes.data);
+    } catch (err) {
+      console.error(err);
+    }
+  }
 
   async function loadData() {
     try {
@@ -48,16 +61,6 @@ export default function RoomsPage({ showToast }) {
       showToast(err.message, 'error');
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function loadMeta() {
-    try {
-      const [hRes, rtRes] = await Promise.all([api.getHostels(), api.getRoomTypes()]);
-      setHostels(hRes.data);
-      setRoomTypes(rtRes.data);
-    } catch (err) {
-      console.error(err);
     }
   }
 
@@ -77,11 +80,11 @@ export default function RoomsPage({ showToast }) {
   function openEditModal(r) {
     setEditingRoom(r);
     setFormData({
-      room_number: r.room_number,
-      hostel_id: String(r.hostel_id),
-      type_id: String(r.type_id),
-      floor: r.floor,
-      status: r.status
+      room_number: r.room_number || '',
+      hostel_id: r.hostel_id ? String(r.hostel_id) : '',
+      type_id: r.type_id ? String(r.type_id) : '',
+      floor: r.floor || 1,
+      status: r.status || 'Available'
     });
     setErrors({});
     setIsModalOpen(true);
@@ -90,9 +93,8 @@ export default function RoomsPage({ showToast }) {
   function validate() {
     const errs = {};
     if (!formData.room_number.trim()) errs.room_number = 'Room number is required';
-    if (!formData.hostel_id) errs.hostel_id = 'Hostel building is required';
-    if (!formData.type_id) errs.type_id = 'Room type is required';
-    if (formData.floor === undefined || formData.floor < 0) errs.floor = 'Valid floor number required';
+    if (!formData.hostel_id) errs.hostel_id = 'Please select a hostel building';
+    if (!formData.type_id) errs.type_id = 'Please select a room type';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -104,19 +106,16 @@ export default function RoomsPage({ showToast }) {
     try {
       setSaving(true);
       const payload = {
-        room_number: formData.room_number,
-        hostel_id: Number(formData.hostel_id),
-        type_id: Number(formData.type_id),
-        floor: Number(formData.floor),
-        status: formData.status
+        ...formData,
+        floor: Number(formData.floor)
       };
 
       if (editingRoom) {
         await api.updateRoom(editingRoom.room_id, payload);
-        showToast('Room updated successfully', 'success');
+        showToast('Room configuration updated', 'success');
       } else {
         await api.createRoom(payload);
-        showToast('Room created successfully', 'success');
+        showToast('New room registered in hostel block', 'success');
       }
       setIsModalOpen(false);
       loadData();
@@ -143,26 +142,47 @@ export default function RoomsPage({ showToast }) {
 
   return (
     <div>
+      {/* Header */}
       <div className="page-header">
         <div className="page-header-title">
-          <h2>Room Directory</h2>
-          <p>Rooms across hostels, floor distributions, capacities, and availability</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #2563eb, #06b6d4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff'
+              }}
+            >
+              <BedDouble size={20} />
+            </div>
+            <div>
+              <h2>Room Allocation & Housing Registry</h2>
+              <p>Configure room numbers, floors, air-conditioning specifications, and occupancy status</p>
+            </div>
+          </div>
         </div>
+
         <div className="page-actions">
           <button className="btn btn-primary" onClick={openCreateModal}>
             <Plus size={16} />
-            Add New Room
+            <span>Add New Room</span>
           </button>
         </div>
       </div>
 
+      {/* Table Container */}
       <div className="table-container">
         {/* Filters */}
         <div className="table-toolbar">
-          <div className="table-filter-group">
-            <Filter size={16} color="#94a3b8" />
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             <select
-              className="select-filter"
+              className="form-select"
+              style={{ width: 'auto', minWidth: 160 }}
               value={hostelFilter}
               onChange={(e) => setHostelFilter(e.target.value)}
             >
@@ -175,20 +195,22 @@ export default function RoomsPage({ showToast }) {
             </select>
 
             <select
-              className="select-filter"
+              className="form-select"
+              style={{ width: 'auto', minWidth: 160 }}
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
             >
               <option value="">All Room Types</option>
               {roomTypes.map((t) => (
                 <option key={t.type_id} value={t.type_id}>
-                  {t.type_name}
+                  {t.type_name} ({t.ac_type})
                 </option>
               ))}
             </select>
 
             <select
-              className="select-filter"
+              className="form-select"
+              style={{ width: 'auto', minWidth: 140 }}
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
@@ -198,60 +220,99 @@ export default function RoomsPage({ showToast }) {
               <option value="Maintenance">Maintenance</option>
             </select>
           </div>
+
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Total: <strong>{rooms.length}</strong> rooms found
+          </span>
         </div>
 
-        {/* Table */}
+        {/* Data Table */}
         <div className="data-table-wrapper">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Room No.</th>
-                <th>Hostel</th>
+                <th>Room No</th>
+                <th>Hostel Building</th>
                 <th>Floor</th>
-                <th>Configuration</th>
-                <th>Capacity</th>
-                <th>Monthly Rent</th>
-                <th>Occupancy Status</th>
+                <th>Room Configuration</th>
+                <th>Capacity & Rent</th>
+                <th>Availability</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '40px 0' }}>
-                    Loading rooms...
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '50px 0', color: 'var(--text-muted)' }}>
+                    <div className="spin-animation" style={{ display: 'inline-block', marginBottom: 8 }}>
+                      <BedDouble size={24} color="var(--primary)" />
+                    </div>
+                    <p>Loading rooms from database...</p>
                   </td>
                 </tr>
               ) : rooms.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                    No rooms found matching filters.
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '50px 0', color: 'var(--text-muted)' }}>
+                    No rooms matched the selected filter criteria.
                   </td>
                 </tr>
               ) : (
                 rooms.map((r) => (
                   <tr key={r.room_id}>
-                    <td style={{ fontWeight: 700, color: '#fff' }}>{r.room_number}</td>
-                    <td style={{ color: '#cbd5e1' }}>{r.hostel_name}</td>
-                    <td>Floor {r.floor}</td>
-                    <td>{r.type_name}</td>
                     <td>
-                      <span style={{ color: '#fff', fontWeight: 600 }}>{r.capacity}</span> Bed{r.capacity > 1 ? 's' : ''}
+                      <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#38bdf8', fontSize: '0.92rem' }}>
+                        Room {r.room_number}
+                      </span>
                     </td>
-                    <td style={{ color: '#10b981', fontWeight: 600 }}>₹{r.fee_per_month?.toLocaleString()}</td>
+
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-primary)', fontWeight: 600 }}>
+                        <Building2 size={15} color="var(--primary)" />
+                        <span>{r.hostel_name}</span>
+                      </div>
+                    </td>
+
+                    <td>
+                      <span style={{ fontSize: '0.85rem' }}>Floor {r.floor}</span>
+                    </td>
+
+                    <td>
+                      <div>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{r.type_name}</span>
+                        <span
+                          className={`badge ${r.ac_type === 'AC' ? 'badge-info' : 'badge-warning'}`}
+                          style={{ marginLeft: 8 }}
+                        >
+                          {r.ac_type || 'Non-AC'}
+                        </span>
+                      </div>
+                    </td>
+
+                    <td>
+                      <div>
+                        <span style={{ fontWeight: 700, color: '#10b981', fontFamily: 'var(--font-mono)' }}>
+                          ₹{r.rent ? Number(r.rent).toLocaleString() : '4,500'}/mo
+                        </span>
+                        <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', display: 'block' }}>
+                          Max Capacity: {r.capacity || 2} Students
+                        </span>
+                      </div>
+                    </td>
+
                     <td>
                       <span
                         className={`badge ${
                           r.status === 'Available'
                             ? 'badge-success'
                             : r.status === 'Occupied'
-                            ? 'badge-info'
-                            : 'badge-danger'
+                            ? 'badge-purple'
+                            : 'badge-warning'
                         }`}
                       >
-                        {r.status}
+                        {r.status || 'Available'}
                       </span>
                     </td>
+
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         <button
@@ -259,14 +320,14 @@ export default function RoomsPage({ showToast }) {
                           onClick={() => openEditModal(r)}
                           title="Edit room"
                         >
-                          <Edit2 size={14} />
+                          <Edit2 size={13} />
                         </button>
                         <button
                           className="btn btn-danger btn-icon btn-sm"
                           onClick={() => setDeleteRoomId(r.room_id)}
                           title="Delete room"
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </td>
@@ -278,11 +339,12 @@ export default function RoomsPage({ showToast }) {
         </div>
       </div>
 
-      {/* Add / Edit Room Modal */}
+      {/* Add / Edit Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingRoom ? `Edit Room: ${editingRoom.room_number}` : 'Add New Room'}
+        title={editingRoom ? `Edit Room: ${editingRoom.room_number}` : 'Register New Room'}
+        maxWidth="540px"
       >
         <form onSubmit={handleSave}>
           <div className="form-grid">
@@ -291,7 +353,7 @@ export default function RoomsPage({ showToast }) {
               <input
                 type="text"
                 className="form-input"
-                placeholder="e.g. A-105"
+                placeholder="e.g. 101, 204, 305"
                 value={formData.room_number}
                 onChange={(e) => setFormData({ ...formData, room_number: e.target.value })}
               />
@@ -299,20 +361,7 @@ export default function RoomsPage({ showToast }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Floor Number *</label>
-              <input
-                type="number"
-                className="form-input"
-                min="0"
-                max="20"
-                value={formData.floor}
-                onChange={(e) => setFormData({ ...formData, floor: e.target.value })}
-              />
-              {errors.floor && <span className="form-error">{errors.floor}</span>}
-            </div>
-
-            <div className="form-group form-grid-full">
-              <label className="form-label">Hostel Building *</label>
+              <label className="form-label">Hostel Block *</label>
               <select
                 className="form-select"
                 value={formData.hostel_id}
@@ -321,45 +370,57 @@ export default function RoomsPage({ showToast }) {
                 <option value="">Select Hostel</option>
                 {hostels.map((h) => (
                   <option key={h.hostel_id} value={h.hostel_id}>
-                    {h.name} ({h.type})
+                    {h.name}
                   </option>
                 ))}
               </select>
               {errors.hostel_id && <span className="form-error">{errors.hostel_id}</span>}
             </div>
 
-            <div className="form-group form-grid-full">
+            <div className="form-group">
               <label className="form-label">Room Type *</label>
               <select
                 className="form-select"
                 value={formData.type_id}
                 onChange={(e) => setFormData({ ...formData, type_id: e.target.value })}
               >
-                <option value="">Select Room Configuration</option>
+                <option value="">Select Type</option>
                 {roomTypes.map((t) => (
                   <option key={t.type_id} value={t.type_id}>
-                    {t.type_name} - {t.capacity} Bed(s) (₹{t.fee_per_month}/mo)
+                    {t.type_name} ({t.ac_type}, Cap: {t.capacity})
                   </option>
                 ))}
               </select>
               {errors.type_id && <span className="form-error">{errors.type_id}</span>}
             </div>
 
+            <div className="form-group">
+              <label className="form-label">Floor Number *</label>
+              <input
+                type="number"
+                min="0"
+                max="20"
+                className="form-input"
+                value={formData.floor}
+                onChange={(e) => setFormData({ ...formData, floor: e.target.value })}
+              />
+            </div>
+
             <div className="form-group form-grid-full">
-              <label className="form-label">Room Status</label>
+              <label className="form-label">Occupancy Status</label>
               <select
                 className="form-select"
                 value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
               >
-                <option value="Available">Available</option>
-                <option value="Occupied">Occupied</option>
-                <option value="Maintenance">Maintenance</option>
+                <option value="Available">Available (Vacant)</option>
+                <option value="Occupied">Occupied (Residents Active)</option>
+                <option value="Maintenance">Under Maintenance</option>
               </select>
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--bg-card-border)' }}>
             <button
               type="button"
               className="btn btn-secondary"
@@ -369,19 +430,18 @@ export default function RoomsPage({ showToast }) {
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : editingRoom ? 'Update Room' : 'Create Room'}
+              {saving ? 'Saving...' : editingRoom ? 'Update Room' : 'Add Room'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={Boolean(deleteRoomId)}
         onClose={() => setDeleteRoomId(null)}
         onConfirm={handleDelete}
         title="Delete Room Record"
-        message="Are you sure you want to delete this room? If students are currently assigned to it, the deletion will be rejected for safety."
+        message="Are you sure you want to delete this room? Any student allocated to this room will become unassigned."
         confirmText="Confirm Delete"
         isLoading={saving}
       />

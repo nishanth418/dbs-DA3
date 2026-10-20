@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Boxes, AlertTriangle, Filter } from 'lucide-react';
+import { Plus, Edit2, Trash2, Boxes, AlertTriangle, Filter, CheckCircle2, PackageCheck } from 'lucide-react';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { api } from '../services/api';
@@ -9,7 +9,6 @@ const UNITS = ['kg', 'litres', 'pieces', 'boxes', 'packets', 'bundles'];
 
 export default function InventoryPage({ showToast }) {
   const [items, setItems] = useState([]);
-  const [hostels, setHostels] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -27,27 +26,13 @@ export default function InventoryPage({ showToast }) {
     category: 'Food & Provisions',
     quantity: 100,
     unit: 'kg',
-    min_required_quantity: 20,
-    hostel_id: ''
+    min_required_quantity: 20
   });
   const [errors, setErrors] = useState({});
 
   useEffect(() => {
-    loadHostels();
-  }, []);
-
-  useEffect(() => {
     loadInventory();
   }, [categoryFilter, lowStockOnly]);
-
-  async function loadHostels() {
-    try {
-      const res = await api.getHostels();
-      setHostels(res.data);
-    } catch (err) {
-      console.error(err);
-    }
-  }
 
   async function loadInventory() {
     try {
@@ -71,8 +56,7 @@ export default function InventoryPage({ showToast }) {
       category: 'Food & Provisions',
       quantity: 100,
       unit: 'kg',
-      min_required_quantity: 20,
-      hostel_id: hostels[0]?.hostel_id ? String(hostels[0].hostel_id) : ''
+      min_required_quantity: 20
     });
     setErrors({});
     setIsModalOpen(true);
@@ -81,12 +65,11 @@ export default function InventoryPage({ showToast }) {
   function openEditModal(item) {
     setEditingItem(item);
     setFormData({
-      item_name: item.item_name,
-      category: item.category,
-      quantity: item.quantity,
-      unit: item.unit,
-      min_required_quantity: item.min_required_quantity,
-      hostel_id: item.hostel_id ? String(item.hostel_id) : ''
+      item_name: item.item_name || item.ItemName || '',
+      category: item.category || item.Category || 'Food & Provisions',
+      quantity: item.quantity !== undefined ? item.quantity : 100,
+      unit: item.unit || item.Unit || 'kg',
+      min_required_quantity: item.min_required_quantity || 20
     });
     setErrors({});
     setIsModalOpen(true);
@@ -94,11 +77,7 @@ export default function InventoryPage({ showToast }) {
 
   function validate() {
     const errs = {};
-    if (!formData.item_name.trim()) errs.item_name = 'Item name is required';
-    if (formData.quantity === undefined || formData.quantity < 0) errs.quantity = 'Valid stock quantity required';
-    if (formData.min_required_quantity === undefined || formData.min_required_quantity < 0) {
-      errs.min_required_quantity = 'Valid minimum threshold required';
-    }
+    if (!formData.item_name.trim()) errs.item_name = 'Item title is required';
     setErrors(errs);
     return Object.keys(errs).length === 0;
   }
@@ -110,20 +89,17 @@ export default function InventoryPage({ showToast }) {
     try {
       setSaving(true);
       const payload = {
-        item_name: formData.item_name,
-        category: formData.category,
+        ...formData,
         quantity: Number(formData.quantity),
-        unit: formData.unit,
-        min_required_quantity: Number(formData.min_required_quantity),
-        hostel_id: formData.hostel_id ? Number(formData.hostel_id) : null
+        min_required_quantity: Number(formData.min_required_quantity)
       };
 
       if (editingItem) {
-        await api.updateInventoryItem(editingItem.item_id, payload);
-        showToast('Item updated successfully', 'success');
+        await api.updateInventoryItem(editingItem.item_id || editingItem.ItemID, payload);
+        showToast('Inventory item updated successfully', 'success');
       } else {
         await api.createInventoryItem(payload);
-        showToast('Inventory item added successfully', 'success');
+        showToast('Item logged into campus inventory', 'success');
       }
       setIsModalOpen(false);
       loadInventory();
@@ -152,28 +128,47 @@ export default function InventoryPage({ showToast }) {
     <div>
       <div className="page-header">
         <div className="page-header-title">
-          <h2>Inventory & Provisions</h2>
-          <p>Real-time campus supply stock, re-order thresholds, and hostel assignments</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #2563eb, #06b6d4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff'
+              }}
+            >
+              <Boxes size={20} />
+            </div>
+            <div>
+              <h2>Campus Inventory & Stock Telemetry</h2>
+              <p>Food provisions, maintenance hardware, electricals, and automatic stock reorder indicators</p>
+            </div>
+          </div>
         </div>
+
         <div className="page-actions">
           <button className="btn btn-primary" onClick={openCreateModal}>
             <Plus size={16} />
-            Add Inventory Item
+            <span>Add Inventory Item</span>
           </button>
         </div>
       </div>
 
       <div className="table-container">
-        {/* Filters */}
+        {/* Filters Toolbar */}
         <div className="table-toolbar">
-          <div className="table-filter-group">
-            <Filter size={16} color="#94a3b8" />
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             <select
-              className="select-filter"
+              className="form-select"
+              style={{ width: 'auto', minWidth: 180 }}
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
             >
-              <option value="">All Categories</option>
+              <option value="">All Stock Categories</option>
               {CATEGORIES.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -181,85 +176,124 @@ export default function InventoryPage({ showToast }) {
               ))}
             </select>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', color: '#cbd5e1', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={lowStockOnly}
-                onChange={(e) => setLowStockOnly(e.target.checked)}
-              />
-              Show Low Stock Items Only
-            </label>
+            <button
+              type="button"
+              className={`btn btn-sm ${lowStockOnly ? 'btn-danger' : 'btn-secondary'}`}
+              onClick={() => setLowStockOnly(!lowStockOnly)}
+            >
+              <AlertTriangle size={14} />
+              <span>{lowStockOnly ? 'Showing Low Stock Only' : 'Filter Low Stock Items'}</span>
+            </button>
           </div>
+
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Total Items: <strong>{items.length}</strong>
+          </span>
         </div>
 
-        {/* Table */}
+        {/* Data Table */}
         <div className="data-table-wrapper">
           <table className="data-table">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Item Name</th>
+                <th>Item Code</th>
+                <th>Item Title</th>
                 <th>Category</th>
-                <th>Current Stock</th>
-                <th>Min. Threshold</th>
-                <th>Assigned Hostel</th>
-                <th>Stock Status</th>
+                <th>Available Quantity</th>
+                <th>Unit</th>
+                <th>Stock Level Status</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '40px 0' }}>
-                    Loading inventory...
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '50px 0', color: 'var(--text-muted)' }}>
+                    <div className="spin-animation" style={{ display: 'inline-block', marginBottom: 8 }}>
+                      <Boxes size={24} color="var(--primary)" />
+                    </div>
+                    <p>Loading inventory balances...</p>
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                    No inventory records found.
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '50px 0', color: 'var(--text-muted)' }}>
+                    No inventory records match the current filter.
                   </td>
                 </tr>
               ) : (
-                items.map((i) => {
-                  const isLow = i.quantity <= i.min_required_quantity;
+                items.map((it) => {
+                  const qty = it.quantity !== undefined ? Number(it.quantity) : 100;
+                  const isLow = qty <= 30;
+                  const isHigh = qty >= 150;
+
                   return (
-                    <tr key={i.item_id}>
-                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>#{i.item_id}</td>
-                      <td style={{ fontWeight: 600, color: '#fff' }}>{i.item_name}</td>
-                      <td>{i.category}</td>
-                      <td style={{ fontWeight: 700, color: isLow ? '#f87171' : '#10b981' }}>
-                        {i.quantity} {i.unit}
+                    <tr key={it.item_id || it.ItemID}>
+                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        #{it.item_id || it.ItemID}
                       </td>
-                      <td style={{ color: '#94a3b8' }}>
-                        {i.min_required_quantity} {i.unit}
+
+                      <td>
+                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {it.item_name || it.ItemName}
+                        </span>
                       </td>
-                      <td>{i.hostel_name || 'Central Store'}</td>
+
+                      <td>
+                        <span className="badge badge-info">
+                          {it.category || it.Category || 'Provisions'}
+                        </span>
+                      </td>
+
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <span style={{ fontWeight: 800, fontFamily: 'var(--font-mono)', fontSize: '1rem', color: isLow ? '#f87171' : isHigh ? '#38bdf8' : '#34d399' }}>
+                            {qty}
+                          </span>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{it.unit || it.Unit || 'kg'}</span>
+                        </div>
+                      </td>
+
+                      <td>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                          {it.unit || it.Unit || 'kg'}
+                        </span>
+                      </td>
+
                       <td>
                         {isLow ? (
                           <span className="badge badge-danger">
-                            <AlertTriangle size={12} />
-                            Re-order Needed
+                            <AlertTriangle size={11} />
+                            LOW STOCK
+                          </span>
+                        ) : isHigh ? (
+                          <span className="badge badge-info">
+                            <PackageCheck size={11} />
+                            HIGH STOCK
                           </span>
                         ) : (
-                          <span className="badge badge-success">Adequate</span>
+                          <span className="badge badge-success">
+                            <CheckCircle2 size={11} />
+                            NORMAL
+                          </span>
                         )}
                       </td>
+
                       <td style={{ textAlign: 'right' }}>
                         <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                           <button
                             className="btn btn-secondary btn-icon btn-sm"
-                            onClick={() => openEditModal(i)}
+                            onClick={() => openEditModal(it)}
                             title="Edit item"
                           >
-                            <Edit2 size={14} />
+                            <Edit2 size={13} />
                           </button>
                           <button
                             className="btn btn-danger btn-icon btn-sm"
-                            onClick={() => setDeleteItemId(i.item_id)}
+                            onClick={() => setDeleteItemId(it.item_id || it.ItemID)}
                             title="Delete item"
                           >
-                            <Trash2 size={14} />
+                            <Trash2 size={13} />
                           </button>
                         </div>
                       </td>
@@ -272,20 +306,21 @@ export default function InventoryPage({ showToast }) {
         </div>
       </div>
 
-      {/* Add / Edit Modal */}
+      {/* Modal */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingItem ? `Edit Item: ${editingItem.item_name}` : 'Add Inventory Item'}
+        title={editingItem ? `Edit Item: ${editingItem.item_name || editingItem.ItemName}` : 'Add Inventory Item'}
+        maxWidth="540px"
       >
         <form onSubmit={handleSave}>
           <div className="form-grid">
             <div className="form-group form-grid-full">
-              <label className="form-label">Item Name *</label>
+              <label className="form-label">Item Title *</label>
               <input
                 type="text"
                 className="form-input"
-                placeholder="e.g. Basmati Rice or LED Tube Light"
+                placeholder="e.g. Basmati Rice, Detergent Bar, LED Tube Light"
                 value={formData.item_name}
                 onChange={(e) => setFormData({ ...formData, item_name: e.target.value })}
               />
@@ -293,7 +328,7 @@ export default function InventoryPage({ showToast }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Category *</label>
+              <label className="form-label">Inventory Category</label>
               <select
                 className="form-select"
                 value={formData.category}
@@ -308,7 +343,7 @@ export default function InventoryPage({ showToast }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Measurement Unit *</label>
+              <label className="form-label">Measurement Unit</label>
               <select
                 className="form-select"
                 value={formData.unit}
@@ -323,69 +358,45 @@ export default function InventoryPage({ showToast }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Initial / Current Stock *</label>
+              <label className="form-label">Current Stock Balance</label>
               <input
                 type="number"
-                className="form-input"
                 min="0"
+                className="form-input"
                 value={formData.quantity}
                 onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
               />
-              {errors.quantity && <span className="form-error">{errors.quantity}</span>}
             </div>
 
             <div className="form-group">
-              <label className="form-label">Min. Safety Stock Threshold *</label>
+              <label className="form-label">Low Stock Reorder Alert Level</label>
               <input
                 type="number"
-                className="form-input"
                 min="0"
+                className="form-input"
                 value={formData.min_required_quantity}
                 onChange={(e) => setFormData({ ...formData, min_required_quantity: e.target.value })}
               />
-              {errors.min_required_quantity && <span className="form-error">{errors.min_required_quantity}</span>}
-            </div>
-
-            <div className="form-group form-grid-full">
-              <label className="form-label">Storage Location / Hostel</label>
-              <select
-                className="form-select"
-                value={formData.hostel_id}
-                onChange={(e) => setFormData({ ...formData, hostel_id: e.target.value })}
-              >
-                <option value="">Central Campus Warehouse</option>
-                {hostels.map((h) => (
-                  <option key={h.hostel_id} value={h.hostel_id}>
-                    {h.name}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setIsModalOpen(false)}
-              disabled={saving}
-            >
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--bg-card-border)' }}>
+            <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)} disabled={saving}>
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : editingItem ? 'Update Item' : 'Add Item'}
+              {saving ? 'Saving...' : editingItem ? 'Update Stock' : 'Add to Inventory'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* Delete Confirmation */}
       <ConfirmDialog
         isOpen={Boolean(deleteItemId)}
         onClose={() => setDeleteItemId(null)}
         onConfirm={handleDelete}
         title="Delete Inventory Item"
-        message="Are you sure you want to delete this inventory item? If any procurement records reference it, the action will be blocked by foreign key protection."
+        message="Are you sure you want to delete this inventory item? Any procurement records tracking this item may be impacted."
         confirmText="Confirm Delete"
         isLoading={saving}
       />

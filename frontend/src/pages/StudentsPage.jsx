@@ -1,5 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Edit2, Trash2, Phone, Eye, AlertCircle, RefreshCw } from 'lucide-react';
+import {
+  Search,
+  Plus,
+  Edit2,
+  Trash2,
+  Phone,
+  Eye,
+  AlertCircle,
+  Users,
+  Filter,
+  CheckCircle2,
+  Building2,
+  BedDouble,
+  Mail,
+  Calendar,
+  X
+} from 'lucide-react';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { api } from '../services/api';
@@ -15,19 +31,19 @@ export default function StudentsPage({ showToast }) {
   const [hostelFilter, setHostelFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  // Modals state
+  // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
   const [viewingStudent, setViewingStudent] = useState(null);
   const [deleteStudentId, setDeleteStudentId] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // Form state
+  // Form State
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
     email: '',
-    dob: '',
+    dob: '2004-01-01',
     gender: 'Male',
     blood_group: 'O+',
     guardian_name: '',
@@ -73,7 +89,7 @@ export default function StudentsPage({ showToast }) {
   }
 
   function handleFilterSubmit(e) {
-    e.preventDefault();
+    if (e) e.preventDefault();
     loadData();
   }
 
@@ -155,10 +171,10 @@ export default function StudentsPage({ showToast }) {
 
       if (editingStudent) {
         await api.updateStudent(editingStudent.student_id, payload);
-        showToast('Student updated successfully', 'success');
+        showToast('Resident record updated successfully', 'success');
       } else {
         await api.createStudent(payload);
-        showToast('Student created successfully', 'success');
+        showToast('Resident registered in database successfully', 'success');
       }
       setIsModalOpen(false);
       loadData();
@@ -185,21 +201,42 @@ export default function StudentsPage({ showToast }) {
 
   return (
     <div>
+      {/* Header */}
       <div className="page-header">
         <div className="page-header-title">
-          <h2>Student Management</h2>
-          <p>Student registry, room occupancy, guardian contact records</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #3b82f6, #06b6d4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff'
+              }}
+            >
+              <Users size={20} />
+            </div>
+            <div>
+              <h2>Resident & Student Management</h2>
+              <p>Hostel resident records, room allocation, and guardian contact registry</p>
+            </div>
+          </div>
         </div>
+
         <div className="page-actions">
           <button className="btn btn-primary" onClick={openCreateModal}>
             <Plus size={16} />
-            Add New Student
+            <span>Register New Student</span>
           </button>
         </div>
       </div>
 
+      {/* Table Container */}
       <div className="table-container">
-        {/* Filters Toolbar */}
+        {/* Filter Toolbar */}
         <div className="table-toolbar">
           <form onSubmit={handleFilterSubmit} style={{ display: 'flex', gap: 12, flex: 1, flexWrap: 'wrap' }}>
             <div className="search-input-wrapper">
@@ -207,16 +244,20 @@ export default function StudentsPage({ showToast }) {
               <input
                 type="text"
                 className="search-input"
-                placeholder="Search by name, email, or room..."
+                placeholder="Search by student name, email, or room..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
 
             <select
-              className="select-filter"
+              className="form-select"
+              style={{ width: 'auto', minWidth: 160 }}
               value={hostelFilter}
-              onChange={(e) => setHostelFilter(e.target.value)}
+              onChange={(e) => {
+                setHostelFilter(e.target.value);
+                setTimeout(loadData, 50);
+              }}
             >
               <option value="">All Hostels</option>
               {hostels.map((h) => (
@@ -227,9 +268,13 @@ export default function StudentsPage({ showToast }) {
             </select>
 
             <select
-              className="select-filter"
+              className="form-select"
+              style={{ width: 'auto', minWidth: 140 }}
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setTimeout(loadData, 50);
+              }}
             >
               <option value="">All Statuses</option>
               <option value="Active">Active</option>
@@ -238,22 +283,40 @@ export default function StudentsPage({ showToast }) {
             </select>
 
             <button type="submit" className="btn btn-secondary btn-sm">
-              Apply Filter
+              Apply Filters
             </button>
+            {(searchTerm || hostelFilter || statusFilter) && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setSearchTerm('');
+                  setHostelFilter('');
+                  setStatusFilter('');
+                  setTimeout(loadData, 50);
+                }}
+              >
+                Clear
+              </button>
+            )}
           </form>
+
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            Showing <strong>{students.length}</strong> resident(s)
+          </span>
         </div>
 
-        {/* Students Table */}
+        {/* Data Table */}
         <div className="data-table-wrapper">
           <table className="data-table">
             <thead>
               <tr>
                 <th>ID</th>
-                <th>Student Name</th>
-                <th>Email</th>
-                <th>Hostel & Room</th>
-                <th>Phones</th>
-                <th>Guardian Info</th>
+                <th>Student Profile</th>
+                <th>Email Address</th>
+                <th>Assigned Room & Hostel</th>
+                <th>Phone Numbers</th>
+                <th>Guardian Contact</th>
                 <th>Status</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
@@ -261,50 +324,89 @@ export default function StudentsPage({ showToast }) {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '40px 0' }}>
-                    Loading students...
+                  <td colSpan="8" style={{ textAlign: 'center', padding: '50px 0', color: 'var(--text-muted)' }}>
+                    <div className="spin-animation" style={{ display: 'inline-block', marginBottom: 8 }}>
+                      <Users size={24} color="var(--primary)" />
+                    </div>
+                    <p>Loading resident database records...</p>
                   </td>
                 </tr>
               ) : students.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>
-                    No student records found matching the query.
+                  <td colSpan="8" style={{ textAlign: 'center', padding: '50px 0', color: 'var(--text-muted)' }}>
+                    <AlertCircle size={24} style={{ marginBottom: 6, opacity: 0.5 }} />
+                    <p>No residents found matching the query.</p>
                   </td>
                 </tr>
               ) : (
                 students.map((s) => (
                   <tr key={s.student_id}>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem' }}>#{s.student_id}</td>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      #{s.student_id}
+                    </td>
+
                     <td>
-                      <div style={{ fontWeight: 600, color: '#fff' }}>
-                        {s.first_name} {s.last_name}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
-                        {s.gender} • {s.blood_group || 'N/A'}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: '8px',
+                            background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(6, 182, 212, 0.2))',
+                            border: '1px solid rgba(56, 189, 248, 0.25)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 700,
+                            color: '#38bdf8',
+                            fontSize: '0.82rem'
+                          }}
+                        >
+                          {s.first_name?.charAt(0)}{s.last_name?.charAt(0)}
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {s.first_name} {s.last_name}
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                            {s.gender} • Blood Group: {s.blood_group || 'O+'}
+                          </div>
+                        </div>
                       </div>
                     </td>
-                    <td style={{ color: '#cbd5e1' }}>{s.email}</td>
+
+                    <td style={{ color: 'var(--text-secondary)', fontSize: '0.86rem' }}>
+                      {s.email}
+                    </td>
+
                     <td>
                       {s.room_number ? (
-                        <div>
-                          <span style={{ fontWeight: 600, color: '#38bdf8' }}>{s.room_number}</span>
-                          <span style={{ fontSize: '0.74rem', color: '#94a3b8', display: 'block' }}>
-                            {s.hostel_name} (Fl. {s.floor})
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: 700, color: '#38bdf8', fontSize: '0.88rem' }}>
+                            Room {s.room_number}
+                          </span>
+                          <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                            {s.hostel_name} (Floor {s.floor || 1})
                           </span>
                         </div>
                       ) : (
-                        <span style={{ color: '#f59e0b', fontSize: '0.78rem' }}>Unassigned</span>
+                        <span className="badge badge-warning">Unassigned</span>
                       )}
                     </td>
+
+                    <td style={{ fontSize: '0.82rem', fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>
+                      {s.phone_numbers || 'No phone registered'}
+                    </td>
+
                     <td>
-                      <div style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
-                        {s.phone_numbers || 'No phone registered'}
+                      <div style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {s.guardian_name}
+                      </div>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                        {s.guardian_phone}
                       </div>
                     </td>
-                    <td>
-                      <div style={{ fontSize: '0.8rem', color: '#fff' }}>{s.guardian_name}</div>
-                      <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>{s.guardian_phone}</div>
-                    </td>
+
                     <td>
                       <span
                         className={`badge ${
@@ -318,28 +420,29 @@ export default function StudentsPage({ showToast }) {
                         {s.status}
                       </span>
                     </td>
+
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         <button
                           className="btn btn-secondary btn-icon btn-sm"
                           onClick={() => setViewingStudent(s)}
-                          title="View full record"
+                          title="View complete record"
                         >
-                          <Eye size={14} />
+                          <Eye size={13} />
                         </button>
                         <button
                           className="btn btn-secondary btn-icon btn-sm"
                           onClick={() => openEditModal(s)}
                           title="Edit student"
                         >
-                          <Edit2 size={14} />
+                          <Edit2 size={13} />
                         </button>
                         <button
                           className="btn btn-danger btn-icon btn-sm"
                           onClick={() => setDeleteStudentId(s.student_id)}
                           title="Delete student"
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     </td>
@@ -355,8 +458,8 @@ export default function StudentsPage({ showToast }) {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingStudent ? `Edit Student: ${editingStudent.first_name} ${editingStudent.last_name}` : 'Register New Student'}
-        maxWidth="700px"
+        title={editingStudent ? `Edit Student: ${editingStudent.first_name} ${editingStudent.last_name}` : 'Register New Resident'}
+        maxWidth="720px"
       >
         <form onSubmit={handleSaveStudent}>
           <div className="form-grid">
@@ -490,7 +593,7 @@ export default function StudentsPage({ showToast }) {
                 <option value="">No Room Assigned</option>
                 {rooms.map((r) => (
                   <option key={r.room_id} value={r.room_id}>
-                    {r.room_number} - {r.hostel_name} ({r.type_name}, Status: {r.status})
+                    Room {r.room_number} - {r.hostel_name} ({r.type_name}, Status: {r.status})
                   </option>
                 ))}
               </select>
@@ -508,7 +611,7 @@ export default function StudentsPage({ showToast }) {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Status</label>
+              <label className="form-label">Enrollment Status</label>
               <select
                 className="form-select"
                 value={formData.status}
@@ -521,7 +624,7 @@ export default function StudentsPage({ showToast }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--bg-card-border)' }}>
             <button
               type="button"
               className="btn btn-secondary"
@@ -531,27 +634,29 @@ export default function StudentsPage({ showToast }) {
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Saving...' : editingStudent ? 'Update Student' : 'Create Student'}
+              {saving ? 'Saving to Database...' : editingStudent ? 'Update Resident Record' : 'Register Resident'}
             </button>
           </div>
         </form>
       </Modal>
 
-      {/* View Student Record Modal */}
+      {/* View Record Modal */}
       {viewingStudent && (
         <Modal
           isOpen={true}
           onClose={() => setViewingStudent(null)}
-          title={`Student Profile: ${viewingStudent.first_name} ${viewingStudent.last_name}`}
+          title={`Resident Profile: ${viewingStudent.first_name} ${viewingStudent.last_name}`}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>STUDENT ID</span>
-                <p style={{ fontWeight: 600, color: '#fff' }}>#{viewingStudent.student_id}</p>
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>STUDENT ID</span>
+                <p style={{ fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                  #{viewingStudent.student_id}
+                </p>
               </div>
               <div>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>STATUS</span>
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>STATUS</span>
                 <p>
                   <span className={`badge ${viewingStudent.status === 'Active' ? 'badge-success' : 'badge-danger'}`}>
                     {viewingStudent.status}
@@ -559,44 +664,51 @@ export default function StudentsPage({ showToast }) {
                 </p>
               </div>
               <div>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>EMAIL</span>
-                <p style={{ color: '#fff' }}>{viewingStudent.email}</p>
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>EMAIL</span>
+                <p style={{ color: 'var(--text-primary)' }}>{viewingStudent.email}</p>
               </div>
               <div>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>GENDER & BLOOD GROUP</span>
-                <p style={{ color: '#fff' }}>
-                  {viewingStudent.gender} • {viewingStudent.blood_group || '-'}
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>GENDER & BLOOD GROUP</span>
+                <p style={{ color: 'var(--text-primary)' }}>
+                  {viewingStudent.gender} • {viewingStudent.blood_group || 'O+'}
                 </p>
               </div>
               <div>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>ASSIGNED ROOM</span>
-                <p style={{ color: '#38bdf8', fontWeight: 600 }}>
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>ALLOCATED ROOM</span>
+                <p style={{ color: '#38bdf8', fontWeight: 700 }}>
                   {viewingStudent.room_number ? `${viewingStudent.room_number} (${viewingStudent.hostel_name})` : 'Unassigned'}
                 </p>
               </div>
               <div>
-                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>ADMISSION DATE</span>
-                <p style={{ color: '#fff' }}>{viewingStudent.admission_date}</p>
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>ADMISSION DATE</span>
+                <p style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                  {viewingStudent.admission_date}
+                </p>
               </div>
             </div>
 
             <div>
-              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>CONTACT PHONES</span>
-              <p style={{ color: '#fff' }}>{viewingStudent.phone_numbers || 'No phone registered'}</p>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>CONTACT PHONE NUMBERS</span>
+              <p style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                {viewingStudent.phone_numbers || 'No registered phone numbers'}
+              </p>
             </div>
 
             <div>
-              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>GUARDIAN DETAILS</span>
-              <p style={{ color: '#fff', fontWeight: 600 }}>{viewingStudent.guardian_name}</p>
-              <p style={{ color: '#94a3b8', fontSize: '0.84rem' }}>{viewingStudent.guardian_phone}</p>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>GUARDIAN PROFILE</span>
+              <p style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{viewingStudent.guardian_name}</p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.84rem', fontFamily: 'var(--font-mono)' }}>
+                {viewingStudent.guardian_phone}
+              </p>
             </div>
 
             <div>
-              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>PERMANENT ADDRESS</span>
-              <p style={{ color: '#cbd5e1', fontSize: '0.86rem' }}>{viewingStudent.address}</p>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>PERMANENT RESIDENTIAL ADDRESS</span>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.86rem' }}>{viewingStudent.address}</p>
             </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24 }}>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--bg-card-border)' }}>
             <button className="btn btn-secondary" onClick={() => setViewingStudent(null)}>
               Close
             </button>
@@ -609,8 +721,8 @@ export default function StudentsPage({ showToast }) {
         isOpen={Boolean(deleteStudentId)}
         onClose={() => setDeleteStudentId(null)}
         onConfirm={handleDeleteStudent}
-        title="Delete Student Record"
-        message="Are you sure you want to delete this student? If payment records exist for this student, the foreign key safety check will block deletion."
+        title="Delete Resident Record"
+        message="Are you sure you want to delete this student record? Database foreign keys will prevent accidental deletion if active payment records exist."
         confirmText="Confirm Delete"
         isLoading={saving}
       />
