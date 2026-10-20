@@ -1,5 +1,5 @@
 // Production Render Backend URL
-const PRODUCTION_BACKEND_URL = 'https://hostel-management-system-database-system.onrender.com';
+const PRODUCTION_BACKEND_URL = 'https://dbsss-backend.onrender.com';
 
 /**
  * Resolves the API base URL:
