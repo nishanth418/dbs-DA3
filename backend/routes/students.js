@@ -1,74 +1,70 @@
 const express = require('express');
 const router = express.Router();
-const { query, execute } = require('../database');
+const { query, execute, syncRelationships } = require('../database');
 
 // GET all students
 router.get('/', async (req, res) => {
   try {
     const { search, hostel_id, status } = req.query;
-    let sql = `
-      SELECT 
+
+    const cypher = `
+      MATCH (s:Student)
+      OPTIONAL MATCH (s)-[:ALLOCATED_ROOM]->(r:Room)
+      OPTIONAL MATCH (s)-[:RESIDES_IN]->(h:Hostel)
+      OPTIONAL MATCH (r)-[:HAS_TYPE]->(rt:RoomType)
+      OPTIONAL MATCH (s)-[:HAS_PHONE]->(sp:StudentPhone)
+      WHERE ($search IS NULL OR toLower(s.FirstName) CONTAINS toLower($search) 
+              OR toLower(s.LastName) CONTAINS toLower($search) 
+              OR toLower(s.Email) CONTAINS toLower($search) 
+              OR toLower(s.RoomNo) CONTAINS toLower($search))
+        AND ($hostelId IS NULL OR s.HostelID = $hostelId)
+        AND ($status IS NULL OR s.PlanType = $status)
+      WITH s, r, h, rt, collect(DISTINCT sp.PhoneNo) AS phonesList
+      RETURN 
         s.StudentID AS student_id,
-        s.StudentID,
+        s.StudentID AS StudentID,
         s.FirstName AS first_name,
-        s.FirstName,
+        s.FirstName AS FirstName,
         s.LastName AS last_name,
-        s.LastName,
+        s.LastName AS LastName,
         s.Gender AS gender,
-        s.Gender,
+        s.Gender AS Gender,
         s.DOB AS dob,
-        s.DOB,
+        s.DOB AS DOB,
         s.Email AS email,
-        s.Email,
+        s.Email AS Email,
         s.BloodGroup AS blood_group,
-        s.BloodGroup,
+        s.BloodGroup AS BloodGroup,
         s.AllergyInfo AS allergy_info,
-        s.AllergyInfo,
+        s.AllergyInfo AS AllergyInfo,
         s.PlanType AS plan_type,
-        s.PlanType,
+        s.PlanType AS PlanType,
         s.PlanType AS status,
         s.RoomNo AS room_number,
         s.RoomNo AS room_id,
-        s.RoomNo,
+        s.RoomNo AS RoomNo,
         s.HostelID AS hostel_id,
-        s.HostelID,
+        s.HostelID AS HostelID,
         s.MessID AS mess_id,
-        s.MessID,
+        s.MessID AS MessID,
         s.MentorStudentID AS mentor_student_id,
-        s.MentorStudentID,
+        s.MentorStudentID AS MentorStudentID,
         r.FloorNo AS floor,
-        r.FloorNo,
+        r.FloorNo AS FloorNo,
         h.HostelName AS hostel_name,
-        h.HostelName,
+        h.HostelName AS HostelName,
         rt.TypeName AS room_type_name,
         r.RoomRent AS fee_per_month,
-        GROUP_CONCAT(sp.PhoneNo, ', ') AS phone_numbers
-      FROM STUDENT s
-      LEFT JOIN ROOM r ON s.RoomNo = r.RoomNo
-      LEFT JOIN HOSTEL h ON s.HostelID = h.HostelID
-      LEFT JOIN ROOM_TYPE rt ON r.Type = rt.TypeName OR r.Type = rt.TypeID
-      LEFT JOIN STUDENT_PHONE sp ON s.StudentID = sp.StudentID
-      WHERE 1=1
+        reduce(acc = '', p IN phonesList | CASE WHEN acc = '' THEN p ELSE acc + ', ' + p END) AS phone_numbers
+      ORDER BY s.StudentID ASC
     `;
-    const params = [];
 
-    if (search && search.trim()) {
-      sql += ` AND (s.FirstName LIKE ? OR s.LastName LIKE ? OR s.Email LIKE ? OR s.RoomNo LIKE ?)`;
-      const sTerm = `%${search.trim()}%`;
-      params.push(sTerm, sTerm, sTerm, sTerm);
-    }
-    if (hostel_id && hostel_id.trim()) {
-      sql += ` AND s.HostelID = ?`;
-      params.push(hostel_id.trim());
-    }
-    if (status && status.trim()) {
-      sql += ` AND s.PlanType = ?`;
-      params.push(status.trim());
-    }
+    const rows = await query(cypher, {
+      search: search && search.trim() ? search.trim() : null,
+      hostelId: hostel_id && hostel_id.trim() ? hostel_id.trim() : null,
+      status: status && status.trim() ? status.trim() : null
+    });
 
-    sql += ` GROUP BY s.StudentID, s.FirstName, s.LastName, s.Gender, s.DOB, s.Email, s.BloodGroup, s.AllergyInfo, s.PlanType, s.RoomNo, s.HostelID, s.MessID, s.MentorStudentID, r.FloorNo, h.HostelName, rt.TypeName, r.RoomRent ORDER BY s.StudentID ASC`;
-
-    const rows = await query(sql, params);
     res.json({ success: true, count: rows.length, data: rows });
   } catch (error) {
     console.error('Error fetching students:', error);
@@ -80,61 +76,57 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const studentId = req.params.id;
-    const sql = `
-      SELECT 
+    const cypher = `
+      MATCH (s:Student {StudentID: $studentId})
+      OPTIONAL MATCH (s)-[:ALLOCATED_ROOM]->(r:Room)
+      OPTIONAL MATCH (s)-[:RESIDES_IN]->(h:Hostel)
+      OPTIONAL MATCH (r)-[:HAS_TYPE]->(rt:RoomType)
+      OPTIONAL MATCH (s)-[:HAS_PHONE]->(sp:StudentPhone)
+      WITH s, r, h, rt, collect(DISTINCT sp.PhoneNo) AS phones
+      RETURN 
         s.StudentID AS student_id,
-        s.StudentID,
+        s.StudentID AS StudentID,
         s.FirstName AS first_name,
-        s.FirstName,
+        s.FirstName AS FirstName,
         s.LastName AS last_name,
-        s.LastName,
+        s.LastName AS LastName,
         s.Gender AS gender,
-        s.Gender,
+        s.Gender AS Gender,
         s.DOB AS dob,
-        s.DOB,
+        s.DOB AS DOB,
         s.Email AS email,
-        s.Email,
+        s.Email AS Email,
         s.BloodGroup AS blood_group,
-        s.BloodGroup,
+        s.BloodGroup AS BloodGroup,
         s.AllergyInfo AS allergy_info,
-        s.AllergyInfo,
+        s.AllergyInfo AS AllergyInfo,
         s.PlanType AS plan_type,
-        s.PlanType,
+        s.PlanType AS PlanType,
         s.PlanType AS status,
         s.RoomNo AS room_number,
         s.RoomNo AS room_id,
-        s.RoomNo,
+        s.RoomNo AS RoomNo,
         s.HostelID AS hostel_id,
-        s.HostelID,
+        s.HostelID AS HostelID,
         s.MessID AS mess_id,
-        s.MessID,
+        s.MessID AS MessID,
         s.MentorStudentID AS mentor_student_id,
-        s.MentorStudentID,
+        s.MentorStudentID AS MentorStudentID,
         r.FloorNo AS floor,
-        r.FloorNo,
+        r.FloorNo AS FloorNo,
         h.HostelName AS hostel_name,
-        h.HostelName,
+        h.HostelName AS HostelName,
         rt.TypeName AS room_type_name,
-        r.RoomRent AS fee_per_month
-      FROM STUDENT s
-      LEFT JOIN ROOM r ON s.RoomNo = r.RoomNo
-      LEFT JOIN HOSTEL h ON s.HostelID = h.HostelID
-      LEFT JOIN ROOM_TYPE rt ON r.Type = rt.TypeName OR r.Type = rt.TypeID
-      WHERE s.StudentID = ?
+        r.RoomRent AS fee_per_month,
+        phones
     `;
-    const rows = await query(sql, [studentId]);
+    const rows = await query(cypher, { studentId });
 
     if (rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Student not found' });
     }
 
-    const student = rows[0];
-    const phoneRows = await query(`
-      SELECT PhoneNo as phone_number FROM STUDENT_PHONE WHERE StudentID = ?
-    `, [studentId]);
-    const phones = phoneRows.map(p => p.phone_number);
-
-    res.json({ success: true, data: { ...student, phones } });
+    res.json({ success: true, data: rows[0] });
   } catch (error) {
     console.error('Error fetching student by ID:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -184,36 +176,44 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, message: 'First and last name are required' });
     }
 
-    const insertSql = `
-      INSERT INTO STUDENT (
-        StudentID, FirstName, LastName, Gender, DOB, Email, BloodGroup,
-        AllergyInfo, PlanType, RoomNo, HostelID, MessID, MentorStudentID
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
+    const studentProps = {
+      StudentID: finalId,
+      FirstName: finalFirstName,
+      LastName: finalLastName,
+      Gender: Gender || gender || 'Male',
+      DOB: DOB || dob || '2004-01-01',
+      Email: finalEmail,
+      BloodGroup: BloodGroup || blood_group || 'O+',
+      AllergyInfo: AllergyInfo || allergy_info || 'None',
+      PlanType: PlanType || plan_type || 'Standard',
+      RoomNo: RoomNo || room_number || room_id || null,
+      HostelID: HostelID || hostel_id || null,
+      MessID: MessID || mess_id || null,
+      MentorStudentID: MentorStudentID || mentor_student_id || null
+    };
 
-    await execute(insertSql, [
-      finalId,
-      finalFirstName,
-      finalLastName,
-      Gender || gender || 'Male',
-      DOB || dob || '2004-01-01',
-      finalEmail,
-      BloodGroup || blood_group || 'O+',
-      AllergyInfo || allergy_info || 'None',
-      PlanType || plan_type || 'Standard',
-      RoomNo || room_number || room_id || null,
-      HostelID || hostel_id || null,
-      MessID || mess_id || null,
-      MentorStudentID || mentor_student_id || null
-    ]);
+    await execute(`
+      MERGE (s:Student {StudentID: $StudentID})
+      SET s += $props
+    `, {
+      StudentID: finalId,
+      props: studentProps
+    });
 
     if (phones && Array.isArray(phones)) {
       for (const phone of phones) {
         if (phone && String(phone).trim()) {
-          await execute(`INSERT INTO STUDENT_PHONE (StudentID, PhoneNo) VALUES (?, ?)`, [finalId, String(phone).trim()]);
+          await execute(`
+            MERGE (sp:StudentPhone {StudentID: $studentId, PhoneNo: $phoneNo})
+            WITH sp
+            MATCH (s:Student {StudentID: $studentId})
+            MERGE (s)-[:HAS_PHONE]->(sp)
+          `, { studentId: finalId, phoneNo: String(phone).trim() });
         }
       }
     }
+
+    await syncRelationships('Student', studentProps);
 
     res.status(201).json({ success: true, message: 'Student created successfully', studentId: finalId });
   } catch (error) {
@@ -228,44 +228,54 @@ router.put('/:id', async (req, res) => {
     const studentId = req.params.id;
     const body = req.body || {};
 
-    const existingRows = await query(`SELECT * FROM STUDENT WHERE StudentID = ?`, [studentId]);
+    const existingRows = await query(`MATCH (s:Student {StudentID: $studentId}) RETURN s`, { studentId });
     if (existingRows.length === 0) {
       return res.status(404).json({ success: false, message: 'Student not found' });
     }
     const existing = existingRows[0];
 
-    const updateSql = `
-      UPDATE STUDENT SET
-        FirstName = ?, LastName = ?, Gender = ?, DOB = ?, Email = ?,
-        BloodGroup = ?, AllergyInfo = ?, PlanType = ?, RoomNo = ?,
-        HostelID = ?, MessID = ?, MentorStudentID = ?
-      WHERE StudentID = ?
-    `;
+    const updatedProps = {
+      FirstName: body.FirstName || body.first_name || existing.FirstName,
+      LastName: body.LastName || body.last_name || existing.LastName,
+      Gender: body.Gender || body.gender || existing.Gender,
+      DOB: body.DOB || body.dob || existing.DOB,
+      Email: body.Email || body.email || existing.Email,
+      BloodGroup: body.BloodGroup !== undefined ? (body.BloodGroup || body.blood_group) : existing.BloodGroup,
+      AllergyInfo: body.AllergyInfo !== undefined ? (body.AllergyInfo || body.allergy_info) : existing.AllergyInfo,
+      PlanType: body.PlanType || body.plan_type || body.status || existing.PlanType,
+      RoomNo: body.RoomNo || body.room_number || body.room_id || existing.RoomNo,
+      HostelID: body.HostelID || body.hostel_id || existing.HostelID,
+      MessID: body.MessID || body.mess_id || existing.MessID,
+      MentorStudentID: body.MentorStudentID || body.mentor_student_id || existing.MentorStudentID
+    };
 
-    await execute(updateSql, [
-      body.FirstName || body.first_name || existing.FirstName,
-      body.LastName || body.last_name || existing.LastName,
-      body.Gender || body.gender || existing.Gender,
-      body.DOB || body.dob || existing.DOB,
-      body.Email || body.email || existing.Email,
-      body.BloodGroup !== undefined ? (body.BloodGroup || body.blood_group) : existing.BloodGroup,
-      body.AllergyInfo !== undefined ? (body.AllergyInfo || body.allergy_info) : existing.AllergyInfo,
-      body.PlanType || body.plan_type || body.status || existing.PlanType,
-      body.RoomNo || body.room_number || body.room_id || existing.RoomNo,
-      body.HostelID || body.hostel_id || existing.HostelID,
-      body.MessID || body.mess_id || existing.MessID,
-      body.MentorStudentID || body.mentor_student_id || existing.MentorStudentID,
-      studentId
-    ]);
+    await execute(`
+      MATCH (s:Student {StudentID: $studentId})
+      SET s += $props
+    `, {
+      studentId,
+      props: updatedProps
+    });
 
     if (body.phones && Array.isArray(body.phones)) {
-      await execute(`DELETE FROM STUDENT_PHONE WHERE StudentID = ?`, [studentId]);
+      await execute(`
+        MATCH (s:Student {StudentID: $studentId})-[r:HAS_PHONE]->(sp:StudentPhone)
+        DETACH DELETE sp
+      `, { studentId });
+
       for (const phone of body.phones) {
         if (phone && String(phone).trim()) {
-          await execute(`INSERT INTO STUDENT_PHONE (StudentID, PhoneNo) VALUES (?, ?)`, [studentId, String(phone).trim()]);
+          await execute(`
+            MERGE (sp:StudentPhone {StudentID: $studentId, PhoneNo: $phoneNo})
+            WITH sp
+            MATCH (s:Student {StudentID: $studentId})
+            MERGE (s)-[:HAS_PHONE]->(sp)
+          `, { studentId, phoneNo: String(phone).trim() });
         }
       }
     }
+
+    await syncRelationships('Student', { StudentID: studentId, ...updatedProps });
 
     res.json({ success: true, message: 'Student updated successfully' });
   } catch (error) {
@@ -278,20 +288,29 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const studentId = req.params.id;
-    const existing = await query(`SELECT * FROM STUDENT WHERE StudentID = ?`, [studentId]);
+    const existing = await query(`MATCH (s:Student {StudentID: $studentId}) RETURN s`, { studentId });
     if (existing.length === 0) {
       return res.status(404).json({ success: false, message: 'Student not found' });
     }
 
-    const [paymentCount] = await query(`SELECT COUNT(*) AS count FROM PAYMENT WHERE StudentID = ?`, [studentId]);
-    if (paymentCount && Number(paymentCount.count) > 0) {
+    const paymentCount = await query(`
+      MATCH (s:Student {StudentID: $studentId})-[:MADE_PAYMENT]->(p:Payment)
+      RETURN count(p) AS count
+    `, { studentId });
+
+    if (paymentCount && Number(paymentCount[0]?.count || 0) > 0) {
       return res.status(400).json({
         success: false,
-        message: `Cannot delete student with ${paymentCount.count} existing payment records. Foreign key protection active.`
+        message: `Cannot delete student with ${paymentCount[0].count} existing payment records. Foreign key protection active.`
       });
     }
 
-    await execute(`DELETE FROM STUDENT WHERE StudentID = ?`, [studentId]);
+    await execute(`
+      MATCH (s:Student {StudentID: $studentId})
+      OPTIONAL MATCH (s)-[:HAS_PHONE]->(sp:StudentPhone)
+      DETACH DELETE s, sp
+    `, { studentId });
+
     res.json({ success: true, message: 'Student deleted successfully' });
   } catch (error) {
     console.error('Error deleting student:', error);

@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: dbs-da3-backend
+    env: node
+    plan: free
+    region: oregon
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
+      - key: NEO4J_URI
+        value: neo4j+s://cd34fb3a.databases.neo4j.io
+      - key: NEO4J_USERNAME
+        value: cd34fb3a
+      - key: NEO4J_PASSWORD
+        sync: false
+      - key: NEO4J_DATABASE
+        value: neo4j

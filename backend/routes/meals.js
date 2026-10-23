@@ -1,45 +1,40 @@
 const express = require('express');
 const router = express.Router();
-const { query, execute } = require('../database');
+const { query, execute, syncRelationships } = require('../database');
 
 // GET meals with optional filtering by mess
 router.get('/', async (req, res) => {
   try {
     const { mess_id, search } = req.query;
-    let sql = `
-      SELECT 
+
+    const cypher = `
+      MATCH (m:Meal)
+      OPTIONAL MATCH (m)-[:SERVED_AT]->(ms:Mess)
+      WHERE ($messId IS NULL OR m.MessID = $messId)
+        AND ($search IS NULL OR toLower(m.MealName) CONTAINS toLower($search) 
+              OR toLower(coalesce(m.Description, '')) CONTAINS toLower($search))
+      RETURN 
         m.MealID AS meal_id,
-        m.MealID,
+        m.MealID AS MealID,
         m.MealName AS meal_name,
         m.MealName AS name,
-        m.MealName,
+        m.MealName AS MealName,
         m.Description AS description,
-        m.Description,
+        m.Description AS Description,
         m.Cost AS cost,
-        m.Cost,
+        m.Cost AS Cost,
         m.MessID AS mess_id,
-        m.MessID,
-        ms.MessName AS mess_name,
-        ms.MessType AS mess_type
-      FROM MEAL m
-      JOIN MESS ms ON m.MessID = ms.MessID
-      WHERE 1=1
+        m.MessID AS MessID,
+        coalesce(ms.MessName, 'Unassigned') AS mess_name,
+        coalesce(ms.MessType, 'Standard') AS mess_type
+      ORDER BY m.MessID ASC, m.MealID ASC
     `;
-    const params = [];
 
-    if (mess_id && mess_id.trim()) {
-      sql += ` AND m.MessID = ?`;
-      params.push(mess_id.trim());
-    }
-    if (search && search.trim()) {
-      sql += ` AND (m.MealName LIKE ? OR m.Description LIKE ?)`;
-      const s = `%${search.trim()}%`;
-      params.push(s, s);
-    }
+    const rows = await query(cypher, {
+      messId: mess_id && mess_id.trim() ? mess_id.trim() : null,
+      search: search && search.trim() ? search.trim() : null
+    });
 
-    sql += ` ORDER BY m.MessID ASC, m.MealID ASC`;
-
-    const rows = await query(sql, params);
     res.json({ success: true, count: rows.length, data: rows });
   } catch (error) {
     console.error('Error fetching meals:', error);
@@ -51,24 +46,24 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const mealId = req.params.id;
-    const rows = await query(`
-      SELECT 
+    const cypher = `
+      MATCH (m:Meal {MealID: $mealId})
+      OPTIONAL MATCH (m)-[:SERVED_AT]->(ms:Mess)
+      RETURN 
         m.MealID AS meal_id,
-        m.MealID,
+        m.MealID AS MealID,
         m.MealName AS meal_name,
         m.MealName AS name,
-        m.MealName,
+        m.MealName AS MealName,
         m.Description AS description,
-        m.Description,
+        m.Description AS Description,
         m.Cost AS cost,
-        m.Cost,
+        m.Cost AS Cost,
         m.MessID AS mess_id,
-        m.MessID,
-        ms.MessName AS mess_name
-      FROM MEAL m
-      JOIN MESS ms ON m.MessID = ms.MessID
-      WHERE m.MealID = ?
-    `, [mealId]);
+        m.MessID AS MessID,
+        coalesce(ms.MessName, 'Unassigned') AS mess_name
+    `;
+    const rows = await query(cypher, { mealId });
 
     if (rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Meal not found' });
@@ -92,10 +87,20 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Meal name and Mess ID are required' });
     }
 
+    const mealProps = {
+      MealID: finalId,
+      MealName: finalName,
+      Description: Description || description || '',
+      Cost: Number(Cost !== undefined ? Cost : (cost || 100)),
+      MessID: finalMessId
+    };
+
     await execute(`
-      INSERT INTO MEAL (MealID, MealName, Description, Cost, MessID)
-      VALUES (?, ?, ?, ?, ?)
-    `, [finalId, finalName, Description || description || '', Number(Cost !== undefined ? Cost : (cost || 100)), finalMessId]);
+      MERGE (m:Meal {MealID: $mealId})
+      SET m += $props
+    `, { mealId: finalId, props: mealProps });
+
+    await syncRelationships('Meal', mealProps);
 
     res.status(201).json({ success: true, message: 'Meal created successfully', mealId: finalId });
   } catch (error) {
@@ -110,23 +115,25 @@ router.put('/:id', async (req, res) => {
     const mealId = req.params.id;
     const body = req.body || {};
 
-    const existingRows = await query(`SELECT * FROM MEAL WHERE MealID = ?`, [mealId]);
+    const existingRows = await query(`MATCH (m:Meal {MealID: $mealId}) RETURN m`, { mealId });
     if (existingRows.length === 0) {
       return res.status(404).json({ success: false, message: 'Meal not found' });
     }
     const existing = existingRows[0];
 
+    const updatedProps = {
+      MealName: body.MealName || body.meal_name || body.name || existing.MealName,
+      Description: body.Description !== undefined ? (body.Description || body.description) : existing.Description,
+      Cost: body.Cost !== undefined ? Number(body.Cost) : (body.cost !== undefined ? Number(body.cost) : existing.Cost),
+      MessID: body.MessID || body.mess_id || existing.MessID
+    };
+
     await execute(`
-      UPDATE MEAL SET
-        MealName = ?, Description = ?, Cost = ?, MessID = ?
-      WHERE MealID = ?
-    `, [
-      body.MealName || body.meal_name || body.name || existing.MealName,
-      body.Description !== undefined ? (body.Description || body.description) : existing.Description,
-      body.Cost !== undefined ? Number(body.Cost) : (body.cost !== undefined ? Number(body.cost) : existing.Cost),
-      body.MessID || body.mess_id || existing.MessID,
-      mealId
-    ]);
+      MATCH (m:Meal {MealID: $mealId})
+      SET m += $props
+    `, { mealId, props: updatedProps });
+
+    await syncRelationships('Meal', { MealID: mealId, ...updatedProps });
 
     res.json({ success: true, message: 'Meal updated successfully' });
   } catch (error) {
@@ -139,7 +146,7 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const mealId = req.params.id;
-    await execute(`DELETE FROM MEAL WHERE MealID = ?`, [mealId]);
+    await execute(`MATCH (m:Meal {MealID: $mealId}) DETACH DELETE m`, { mealId });
     res.json({ success: true, message: 'Meal deleted successfully' });
   } catch (error) {
     console.error('Error deleting meal:', error);

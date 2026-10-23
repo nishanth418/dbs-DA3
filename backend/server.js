@@ -3,17 +3,42 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
-const { db, verifyDatabase, getApplicationTables, getHealthStatus } = require('./database');
+const { verifyDatabase, getHealthStatus } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
+// Configured allowed origins for CORS
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:5000',
+  process.env.FRONTEND_URL,
+  process.env.CORS_ORIGIN
+].filter(Boolean);
+
+// CORS Middleware supporting local dev, Render, and Vercel domains
 app.use(cors({
-  origin: '*',
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    try {
+      const parsed = new URL(origin);
+      if (
+        allowedOrigins.includes(origin) ||
+        parsed.hostname.endsWith('.vercel.app') ||
+        parsed.hostname === 'localhost' ||
+        parsed.hostname === '127.0.0.1'
+      ) {
+        return callback(null, true);
+      }
+    } catch (_) {}
+    return callback(null, true);
+  },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -39,6 +64,7 @@ app.get('/api/health', async (req, res) => {
     res.status(500).json({
       status: 'unhealthy',
       database: 'disconnected',
+      engine: 'Neo4j AuraDB',
       error: err.message
     });
   }
@@ -83,7 +109,7 @@ app.use((err, req, res, next) => {
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
     console.log(`==================================================`);
-    console.log(` Hostel Management Backend Server running`);
+    console.log(` Hostel Management Backend Server (Neo4j AuraDB)`);
     console.log(` Local URL: http://localhost:${PORT}`);
     console.log(` Health Endpoint: http://localhost:${PORT}/api/health`);
     console.log(`==================================================`);

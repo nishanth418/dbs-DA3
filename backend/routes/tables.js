@@ -1,6 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { db, isMySQL, query, execute, REQUIRED_TABLES } = require('../database');
+const {
+  query,
+  execute,
+  syncRelationships,
+  REQUIRED_TABLES,
+  TABLE_TO_LABEL,
+  TABLE_METADATA
+} = require('../database');
 
 // Middleware to validate table name
 function validateTableName(req, res, next) {
@@ -13,103 +20,9 @@ function validateTableName(req, res, next) {
     });
   }
   req.tableName = upperName;
+  req.label = TABLE_TO_LABEL[upperName];
+  req.meta = TABLE_METADATA[upperName];
   next();
-}
-
-/**
- * Universal helper to get column and foreign key metadata
- */
-async function getTableMetadata(table) {
-  const isMySqlEngine = isMySQL();
-
-  if (isMySqlEngine) {
-    const rawCols = await query(`
-      SELECT 
-        COLUMN_NAME as name,
-        DATA_TYPE as type,
-        COLUMN_TYPE as fullType,
-        IS_NULLABLE as isNullable,
-        COLUMN_DEFAULT as dflt_value,
-        COLUMN_KEY as columnKey,
-        ORDINAL_POSITION as ordinalPosition
-      FROM information_schema.COLUMNS 
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
-      ORDER BY ORDINAL_POSITION ASC;
-    `, [table]);
-
-    const rawFks = await query(`
-      SELECT 
-        COLUMN_NAME as \`from\`,
-        REFERENCED_TABLE_NAME as \`table\`,
-        REFERENCED_COLUMN_NAME as \`to\`
-      FROM information_schema.KEY_COLUMN_USAGE
-      WHERE TABLE_SCHEMA = DATABASE() 
-        AND TABLE_NAME = ? 
-        AND REFERENCED_TABLE_NAME IS NOT NULL;
-    `, [table]);
-
-    const columns = rawCols.map(c => {
-      const isPk = c.columnKey === 'PRI';
-      const fkMatch = rawFks.find(f => f.from === c.name);
-      const isFk = Boolean(fkMatch);
-
-      let keyBadge = null;
-      if (isPk && isFk) {
-        keyBadge = 'PK, FK';
-      } else if (isPk) {
-        keyBadge = 'PK';
-      } else if (isFk) {
-        keyBadge = 'FK';
-      }
-
-      return {
-        name: c.name,
-        type: (c.fullType || c.type || 'VARCHAR(255)').toUpperCase(),
-        notnull: c.isNullable === 'NO',
-        dflt_value: c.dflt_value,
-        pkOrder: isPk ? 1 : 0,
-        isPk,
-        isFk,
-        keyBadge,
-        fkRef: fkMatch ? { table: fkMatch.table, to: fkMatch.to } : null
-      };
-    });
-
-    return { columns, rawFks };
-  } else {
-    // SQLite fallback
-    const rawCols = db.prepare(`PRAGMA table_info("${table}")`).all();
-    const rawFks = db.prepare(`PRAGMA foreign_key_list("${table}")`).all();
-
-    const columns = rawCols.map(c => {
-      const isPk = c.pk > 0;
-      const fkMatch = rawFks.find(f => f.from === c.name);
-      const isFk = Boolean(fkMatch);
-
-      let keyBadge = null;
-      if (isPk && isFk) {
-        keyBadge = 'PK, FK';
-      } else if (isPk) {
-        keyBadge = 'PK';
-      } else if (isFk) {
-        keyBadge = 'FK';
-      }
-
-      return {
-        name: c.name,
-        type: c.type || 'TEXT',
-        notnull: c.notnull === 1,
-        dflt_value: c.dflt_value,
-        pkOrder: c.pk,
-        isPk,
-        isFk,
-        keyBadge,
-        fkRef: fkMatch ? { table: fkMatch.table, to: fkMatch.to } : null
-      };
-    });
-
-    return { columns, rawFks };
-  }
 }
 
 // GET all 18 table summaries
@@ -117,13 +30,14 @@ router.get('/', async (req, res) => {
   try {
     const list = [];
     for (const table of REQUIRED_TABLES) {
-      const [countRow] = await query(`SELECT count(*) as count FROM \`${table}\``);
-      const { columns } = await getTableMetadata(table);
+      const label = TABLE_TO_LABEL[table];
+      const countRes = await query(`MATCH (n:${label}) RETURN count(n) as count`);
+      const meta = TABLE_METADATA[table];
       list.push({
         name: table,
-        rowCount: Number(countRow?.count || 0),
-        columnCount: columns.length,
-        hasCompositeKey: columns.filter(c => c.isPk).length > 1
+        rowCount: Number(countRes[0]?.count || 0),
+        columnCount: meta ? meta.columns.length : 0,
+        hasCompositeKey: meta ? meta.pk.length > 1 : false
       });
     }
     res.json({ success: true, count: list.length, tables: list });
@@ -137,39 +51,64 @@ router.get('/', async (req, res) => {
 router.get('/:tableName', validateTableName, async (req, res) => {
   try {
     const table = req.tableName;
+    const label = req.label;
+    const meta = req.meta;
     const { search } = req.query;
 
-    const { columns, rawFks } = await getTableMetadata(table);
-    const primaryKeys = columns.filter(c => c.isPk).map(c => c.name);
+    const columns = meta.columns.map(c => {
+      const fkMatch = meta.fks.find(f => f.from === c.name);
+      const isPk = c.isPk;
+      const isFk = Boolean(fkMatch);
 
-    let sql = `SELECT * FROM \`${table}\``;
-    const params = [];
+      let keyBadge = null;
+      if (isPk && isFk) {
+        keyBadge = 'PK, FK';
+      } else if (isPk) {
+        keyBadge = 'PK';
+      } else if (isFk) {
+        keyBadge = 'FK';
+      }
+
+      return {
+        name: c.name,
+        type: c.type,
+        notnull: c.notnull,
+        dflt_value: null,
+        pkOrder: isPk ? 1 : 0,
+        isPk,
+        isFk,
+        keyBadge,
+        fkRef: fkMatch ? { table: fkMatch.table, to: fkMatch.to } : null
+      };
+    });
+
+    let cypher = `MATCH (n:${label})`;
+    const params = {};
 
     if (search && search.trim()) {
-      const searchTerms = columns
-        .filter(c => c.type.includes('CHAR') || c.type.includes('TEXT') || c.type.includes('INT'))
-        .map(c => `CAST(\`${c.name}\` AS CHAR) LIKE ?`);
-      if (searchTerms.length > 0) {
-        sql += ` WHERE ${searchTerms.join(' OR ')}`;
-        const s = `%${search.trim()}%`;
-        searchTerms.forEach(() => params.push(s));
+      const stringCols = meta.columns.filter(c => c.type.includes('CHAR') || c.type.includes('TEXT'));
+      if (stringCols.length > 0) {
+        const conditions = stringCols.map(c => `toLower(coalesce(toString(n.${c.name}), '')) CONTAINS toLower($search)`);
+        cypher += ` WHERE ${conditions.join(' OR ')}`;
+        params.search = search.trim();
       }
     }
 
-    if (primaryKeys.length > 0) {
-      sql += ` ORDER BY ${primaryKeys.map(k => `\`${k}\` ASC`).join(', ')}`;
-    }
+    const orderKeys = meta.pk.map(k => `n.${k} ASC`).join(', ');
+    cypher += ` RETURN n ORDER BY ${orderKeys}`;
 
-    const rows = await query(sql, params);
-    const [countRow] = await query(`SELECT count(*) as count FROM \`${table}\``);
-    const totalCount = Number(countRow?.count || 0);
+    const rawRows = await query(cypher, params);
+    const rows = rawRows.map(r => r.n || r);
+
+    const countRes = await query(`MATCH (n:${label}) RETURN count(n) as count`);
+    const totalCount = Number(countRes[0]?.count || 0);
 
     res.json({
       success: true,
       tableName: table,
       columns,
-      primaryKeys,
-      foreignKeys: rawFks.map(f => ({ from: f.from, table: f.table, to: f.to })),
+      primaryKeys: meta.pk,
+      foreignKeys: meta.fks,
       totalRows: totalCount,
       filteredRows: rows.length,
       data: rows
@@ -184,33 +123,37 @@ router.get('/:tableName', validateTableName, async (req, res) => {
 router.post('/:tableName', validateTableName, async (req, res) => {
   try {
     const table = req.tableName;
+    const label = req.label;
+    const meta = req.meta;
     const body = req.body || {};
 
-    const { columns } = await getTableMetadata(table);
-    const insertCols = [];
-    const insertVals = [];
-    const placeholders = [];
-
-    for (const col of columns) {
-      const val = body[col.name];
-      if (val !== undefined && val !== '') {
-        insertCols.push(`\`${col.name}\``);
-        insertVals.push(val);
-        placeholders.push('?');
+    const nodeProps = {};
+    for (const col of meta.columns) {
+      if (body[col.name] !== undefined && body[col.name] !== '') {
+        nodeProps[col.name] = col.type.includes('INT')
+          ? parseInt(body[col.name], 10)
+          : col.type.includes('DECIMAL')
+          ? parseFloat(body[col.name])
+          : body[col.name];
       }
     }
 
-    if (insertCols.length === 0) {
+    if (Object.keys(nodeProps).length === 0) {
       return res.status(400).json({ success: false, message: 'No valid column values provided' });
     }
 
-    const sql = `INSERT INTO \`${table}\` (${insertCols.join(', ')}) VALUES (${placeholders.join(', ')})`;
-    const result = await execute(sql, insertVals);
+    const matchWhere = meta.pk.map(pk => `row.${pk} = $props.${pk}`).join(' AND ');
+    await execute(`
+      MERGE (n:${label} {${meta.pk.map(pk => `${pk}: $props.${pk}`).join(', ')}})
+      SET n += $props
+    `, { props: nodeProps });
+
+    await syncRelationships(label, nodeProps);
 
     res.status(201).json({
       success: true,
       message: `Record added to ${table} successfully`,
-      lastInsertRowid: result.insertId || result.lastInsertRowid
+      lastInsertRowid: nodeProps[meta.pk[0]]
     });
   } catch (err) {
     console.error(`Error inserting into ${req.params.tableName}:`, err);
@@ -222,37 +165,42 @@ router.post('/:tableName', validateTableName, async (req, res) => {
 router.put('/:tableName', validateTableName, async (req, res) => {
   try {
     const table = req.tableName;
+    const label = req.label;
+    const meta = req.meta;
     const { keyCriteria, values } = req.body;
 
     if (!keyCriteria || !values || typeof keyCriteria !== 'object' || typeof values !== 'object') {
       return res.status(400).json({ success: false, message: 'keyCriteria and values objects are required' });
     }
 
-    const setClauses = [];
-    const params = [];
+    const whereClauses = meta.pk.map(pk => `n.${pk} = $keys.${pk}`);
+    const checkRes = await query(`MATCH (n:${label}) WHERE ${whereClauses.join(' AND ')} RETURN n`, { keys: keyCriteria });
 
-    for (const [col, val] of Object.entries(values)) {
-      setClauses.push(`\`${col}\` = ?`);
-      params.push(val === '' ? null : val);
-    }
-
-    const whereClauses = [];
-    for (const [pkCol, pkVal] of Object.entries(keyCriteria)) {
-      whereClauses.push(`\`${pkCol}\` = ?`);
-      params.push(pkVal);
-    }
-
-    if (setClauses.length === 0 || whereClauses.length === 0) {
-      return res.status(400).json({ success: false, message: 'Missing update fields or target key criteria' });
-    }
-
-    const sql = `UPDATE \`${table}\` SET ${setClauses.join(', ')} WHERE ${whereClauses.join(' AND ')}`;
-    const result = await execute(sql, params);
-
-    const affected = result.affectedRows !== undefined ? result.affectedRows : result.changes;
-    if (affected === 0) {
+    if (checkRes.length === 0) {
       return res.status(404).json({ success: false, message: 'No record matched the key criteria' });
     }
+
+    const nodeProps = {};
+    for (const [col, val] of Object.entries(values)) {
+      const colMeta = meta.columns.find(c => c.name === col);
+      if (colMeta) {
+        nodeProps[col] = colMeta.type.includes('INT')
+          ? parseInt(val, 10)
+          : colMeta.type.includes('DECIMAL')
+          ? parseFloat(val)
+          : val;
+      } else {
+        nodeProps[col] = val;
+      }
+    }
+
+    await execute(`
+      MATCH (n:${label})
+      WHERE ${whereClauses.join(' AND ')}
+      SET n += $props
+    `, { keys: keyCriteria, props: nodeProps });
+
+    await syncRelationships(label, { ...keyCriteria, ...nodeProps });
 
     res.json({ success: true, message: `Record in ${table} updated successfully` });
   } catch (err) {
@@ -265,46 +213,62 @@ router.put('/:tableName', validateTableName, async (req, res) => {
 router.delete('/:tableName', validateTableName, async (req, res) => {
   try {
     const table = req.tableName;
+    const label = req.label;
+    const meta = req.meta;
     const keyCriteria = req.query;
 
-    const { columns } = await getTableMetadata(table);
-    const pkCols = columns.filter(c => c.isPk).map(c => c.name);
-
-    if (pkCols.length === 0) {
-      return res.status(400).json({ success: false, message: 'Table has no primary key defined' });
-    }
-
-    const whereClauses = [];
-    const params = [];
-
-    for (const pk of pkCols) {
+    for (const pk of meta.pk) {
       if (keyCriteria[pk] === undefined) {
         return res.status(400).json({
           success: false,
           message: `Missing primary key parameter '${pk}' for deleting from ${table}`
         });
       }
-      whereClauses.push(`\`${pk}\` = ?`);
-      params.push(keyCriteria[pk]);
     }
 
-    const sql = `DELETE FROM \`${table}\` WHERE ${whereClauses.join(' AND ')}`;
-    const result = await execute(sql, params);
+    // Foreign key reference protection
+    if (table === 'STUDENT') {
+      const paymentCheck = await query(`
+        MATCH (s:Student {StudentID: $id})-[:MADE_PAYMENT]->(p:Payment)
+        RETURN count(p) as count
+      `, { id: keyCriteria.StudentID });
+      if (paymentCheck && Number(paymentCheck[0]?.count || 0) > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot delete record: Other tables reference this record via Foreign Key constraint.`
+        });
+      }
+    }
 
-    const affected = result.affectedRows !== undefined ? result.affectedRows : result.changes;
-    if (affected === 0) {
+    if (table === 'HOSTEL') {
+      const roomCheck = await query(`
+        MATCH (r:Room)-[:LOCATED_IN]->(h:Hostel {HostelID: $id})
+        RETURN count(r) as count
+      `, { id: keyCriteria.HostelID });
+      if (roomCheck && Number(roomCheck[0]?.count || 0) > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot delete record: Other tables reference this record via Foreign Key constraint.`
+        });
+      }
+    }
+
+    const whereClauses = meta.pk.map(pk => `n.${pk} = $keys.${pk}`);
+    const checkRes = await query(`MATCH (n:${label}) WHERE ${whereClauses.join(' AND ')} RETURN n`, { keys: keyCriteria });
+
+    if (checkRes.length === 0) {
       return res.status(404).json({ success: false, message: 'No record matched the primary key' });
     }
+
+    await execute(`
+      MATCH (n:${label})
+      WHERE ${whereClauses.join(' AND ')}
+      DETACH DELETE n
+    `, { keys: keyCriteria });
 
     res.json({ success: true, message: `Record deleted from ${table} successfully` });
   } catch (err) {
     console.error(`Error deleting from ${req.params.tableName}:`, err);
-    if (err.message.includes('FOREIGN KEY') || err.message.includes('a foreign key constraint fails')) {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot delete record: Other tables reference this record via Foreign Key constraint.`
-      });
-    }
     res.status(400).json({ success: false, message: err.message });
   }
 });

@@ -1,53 +1,46 @@
 const express = require('express');
 const router = express.Router();
-const { query, execute } = require('../database');
+const { query, execute, syncRelationships } = require('../database');
 
 // GET all procurements
 router.get('/', async (req, res) => {
   try {
     const { supplier_id, item_id, mess_id } = req.query;
-    let sql = `
-      SELECT 
-        CONCAT(p.MessID, '-', p.SupplierID, '-', p.ItemID) AS procure_id,
+
+    const cypher = `
+      MATCH (p:Procures)
+      OPTIONAL MATCH (m:Mess {MessID: p.MessID})
+      OPTIONAL MATCH (s:Supplier {SupplierID: p.SupplierID})
+      OPTIONAL MATCH (i:InventoryItem {ItemID: p.ItemID})
+      WHERE ($supplierId IS NULL OR p.SupplierID = $supplierId)
+        AND ($itemId IS NULL OR p.ItemID = $itemId)
+        AND ($messId IS NULL OR p.MessID = $messId)
+      RETURN 
+        p.MessID + '-' + p.SupplierID + '-' + p.ItemID AS procure_id,
         p.MessID AS mess_id,
-        p.MessID,
-        m.MessName AS mess_name,
+        p.MessID AS MessID,
+        coalesce(m.MessName, 'Mess ' + p.MessID) AS mess_name,
         p.SupplierID AS supplier_id,
-        p.SupplierID,
-        s.SupplierName AS supplier_name,
+        p.SupplierID AS SupplierID,
+        coalesce(s.SupplierName, 'Supplier ' + p.SupplierID) AS supplier_name,
         p.ItemID AS item_id,
-        p.ItemID,
-        i.ItemName AS item_name,
-        i.Category AS item_category,
-        i.Unit AS item_unit,
+        p.ItemID AS ItemID,
+        coalesce(i.ItemName, 'Item ' + p.ItemID) AS item_name,
+        coalesce(i.Category, 'General') AS item_category,
+        coalesce(i.Unit, 'Units') AS item_unit,
         p.Quantity AS quantity,
-        p.Quantity,
+        p.Quantity AS Quantity,
         (p.Quantity * 100) AS total_cost,
         'Completed' AS status
-      FROM PROCURES p
-      JOIN MESS m ON p.MessID = m.MessID
-      JOIN SUPPLIER s ON p.SupplierID = s.SupplierID
-      JOIN INVENTORY_ITEM i ON p.ItemID = i.ItemID
-      WHERE 1=1
+      ORDER BY p.MessID ASC, p.SupplierID ASC
     `;
-    const params = [];
 
-    if (supplier_id && supplier_id.trim()) {
-      sql += ` AND p.SupplierID = ?`;
-      params.push(supplier_id.trim());
-    }
-    if (item_id && item_id.trim()) {
-      sql += ` AND p.ItemID = ?`;
-      params.push(item_id.trim());
-    }
-    if (mess_id && mess_id.trim()) {
-      sql += ` AND p.MessID = ?`;
-      params.push(mess_id.trim());
-    }
+    const rows = await query(cypher, {
+      supplierId: supplier_id && supplier_id.trim() ? supplier_id.trim() : null,
+      itemId: item_id && item_id.trim() ? item_id.trim() : null,
+      messId: mess_id && mess_id.trim() ? mess_id.trim() : null
+    });
 
-    sql += ` ORDER BY p.MessID ASC, p.SupplierID ASC`;
-
-    const rows = await query(sql, params);
     res.json({ success: true, count: rows.length, data: rows });
   } catch (error) {
     console.error('Error fetching procurements:', error);
@@ -68,10 +61,24 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, message: 'MessID, SupplierID, and ItemID are required' });
     }
 
+    const procureProps = {
+      MessID: finalMessId,
+      SupplierID: finalSupplierId,
+      ItemID: finalItemId,
+      Quantity: finalQty
+    };
+
     await execute(`
-      INSERT INTO PROCURES (MessID, SupplierID, ItemID, Quantity)
-      VALUES (?, ?, ?, ?)
-    `, [finalMessId, finalSupplierId, finalItemId, finalQty]);
+      MERGE (p:Procures {MessID: $messId, SupplierID: $supplierId, ItemID: $itemId})
+      SET p += $props
+    `, {
+      messId: finalMessId,
+      supplierId: finalSupplierId,
+      itemId: finalItemId,
+      props: procureProps
+    });
+
+    await syncRelationships('Procures', procureProps);
 
     res.status(201).json({ success: true, message: 'Procurement recorded successfully' });
   } catch (error) {
@@ -93,8 +100,13 @@ router.delete('/', async (req, res) => {
     }
 
     await execute(`
-      DELETE FROM PROCURES WHERE MessID = ? AND SupplierID = ? AND ItemID = ?
-    `, [finalMessId, finalSupplierId, finalItemId]);
+      MATCH (p:Procures {MessID: $messId, SupplierID: $supplierId, ItemID: $itemId})
+      DETACH DELETE p
+    `, {
+      messId: finalMessId,
+      supplierId: finalSupplierId,
+      itemId: finalItemId
+    });
 
     res.json({ success: true, message: 'Procurement removed successfully' });
   } catch (error) {

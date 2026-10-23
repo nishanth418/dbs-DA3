@@ -1,27 +1,27 @@
 const express = require('express');
 const router = express.Router();
-const { query, execute } = require('../database');
+const { query, execute, syncRelationships } = require('../database');
 
 // GET all wardens with phone numbers and assigned hostel
 router.get('/', async (req, res) => {
   try {
     const rows = await query(`
-      SELECT 
+      MATCH (w:Warden)
+      OPTIONAL MATCH (h:Hostel)-[:MANAGED_BY]->(w)
+      OPTIONAL MATCH (w)-[:HAS_PHONE]->(wp:WardenPhone)
+      WITH w, h, collect(DISTINCT wp.PhoneNo) AS phonesList
+      RETURN 
         w.WardenID AS warden_id,
-        w.WardenID,
+        w.WardenID AS WardenID,
         w.WardenName AS name,
-        w.WardenName,
+        w.WardenName AS WardenName,
         w.Email AS email,
-        w.Email,
+        w.Email AS Email,
         w.JoiningDate AS join_date,
-        w.JoiningDate,
-        h.HostelName AS hostel_name,
-        h.HostelID AS hostel_id,
-        GROUP_CONCAT(wp.PhoneNo, ', ') AS phone_numbers
-      FROM WARDEN w
-      LEFT JOIN HOSTEL h ON w.WardenID = h.WardenID
-      LEFT JOIN WARDEN_PHONE wp ON w.WardenID = wp.WardenID
-      GROUP BY w.WardenID, w.WardenName, w.Email, w.JoiningDate, h.HostelName, h.HostelID
+        w.JoiningDate AS JoiningDate,
+        coalesce(h.HostelName, null) AS hostel_name,
+        coalesce(h.HostelID, null) AS hostel_id,
+        reduce(acc = '', p IN phonesList | CASE WHEN acc = '' THEN p ELSE acc + ', ' + p END) AS phone_numbers
       ORDER BY w.WardenID ASC
     `);
 
@@ -37,31 +37,29 @@ router.get('/:id', async (req, res) => {
   try {
     const wardenId = req.params.id;
     const rows = await query(`
-      SELECT 
+      MATCH (w:Warden {WardenID: $wardenId})
+      OPTIONAL MATCH (h:Hostel)-[:MANAGED_BY]->(w)
+      OPTIONAL MATCH (w)-[:HAS_PHONE]->(wp:WardenPhone)
+      WITH w, h, collect(DISTINCT wp.PhoneNo) AS phones
+      RETURN 
         w.WardenID AS warden_id,
-        w.WardenID,
+        w.WardenID AS WardenID,
         w.WardenName AS name,
-        w.WardenName,
+        w.WardenName AS WardenName,
         w.Email AS email,
-        w.Email,
+        w.Email AS Email,
         w.JoiningDate AS join_date,
-        w.JoiningDate,
-        h.HostelName AS hostel_name,
-        h.HostelID AS hostel_id
-      FROM WARDEN w
-      LEFT JOIN HOSTEL h ON w.WardenID = h.WardenID
-      WHERE w.WardenID = ?
-    `, [wardenId]);
+        w.JoiningDate AS JoiningDate,
+        coalesce(h.HostelName, null) AS hostel_name,
+        coalesce(h.HostelID, null) AS hostel_id,
+        phones
+    `, { wardenId });
 
     if (rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Warden not found' });
     }
 
-    const warden = rows[0];
-    const phoneRows = await query(`SELECT PhoneNo as phone_number FROM WARDEN_PHONE WHERE WardenID = ?`, [wardenId]);
-    const phones = phoneRows.map(p => p.phone_number);
-
-    res.json({ success: true, data: { ...warden, phones } });
+    res.json({ success: true, data: rows[0] });
   } catch (error) {
     console.error('Error fetching warden by ID:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -78,15 +76,27 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Warden name is required' });
     }
 
+    const wardenProps = {
+      WardenID: finalId,
+      WardenName: finalName,
+      Email: Email || email || '',
+      JoiningDate: JoiningDate || join_date || '01-JAN-22'
+    };
+
     await execute(`
-      INSERT INTO WARDEN (WardenID, WardenName, Email, JoiningDate)
-      VALUES (?, ?, ?, ?)
-    `, [finalId, finalName, Email || email || '', JoiningDate || join_date || '01-JAN-22']);
+      MERGE (w:Warden {WardenID: $wardenId})
+      SET w += $props
+    `, { wardenId: finalId, props: wardenProps });
 
     if (phones && Array.isArray(phones)) {
       for (const phone of phones) {
         if (phone && String(phone).trim()) {
-          await execute(`INSERT INTO WARDEN_PHONE (WardenID, PhoneNo) VALUES (?, ?)`, [finalId, String(phone).trim()]);
+          await execute(`
+            MERGE (wp:WardenPhone {WardenID: $wardenId, PhoneNo: $phoneNo})
+            WITH wp
+            MATCH (w:Warden {WardenID: $wardenId})
+            MERGE (w)-[:HAS_PHONE]->(wp)
+          `, { wardenId: finalId, phoneNo: String(phone).trim() });
         }
       }
     }
@@ -104,28 +114,37 @@ router.put('/:id', async (req, res) => {
     const wardenId = req.params.id;
     const body = req.body || {};
 
-    const existingRows = await query(`SELECT * FROM WARDEN WHERE WardenID = ?`, [wardenId]);
+    const existingRows = await query(`MATCH (w:Warden {WardenID: $wardenId}) RETURN w`, { wardenId });
     if (existingRows.length === 0) {
       return res.status(404).json({ success: false, message: 'Warden not found' });
     }
     const existing = existingRows[0];
 
+    const updatedProps = {
+      WardenName: body.WardenName || body.name || existing.WardenName,
+      Email: body.Email || body.email || existing.Email,
+      JoiningDate: body.JoiningDate || body.join_date || existing.JoiningDate
+    };
+
     await execute(`
-      UPDATE WARDEN SET
-        WardenName = ?, Email = ?, JoiningDate = ?
-      WHERE WardenID = ?
-    `, [
-      body.WardenName || body.name || existing.WardenName,
-      body.Email || body.email || existing.Email,
-      body.JoiningDate || body.join_date || existing.JoiningDate,
-      wardenId
-    ]);
+      MATCH (w:Warden {WardenID: $wardenId})
+      SET w += $props
+    `, { wardenId, props: updatedProps });
 
     if (body.phones && Array.isArray(body.phones)) {
-      await execute(`DELETE FROM WARDEN_PHONE WHERE WardenID = ?`, [wardenId]);
+      await execute(`
+        MATCH (w:Warden {WardenID: $wardenId})-[r:HAS_PHONE]->(wp:WardenPhone)
+        DETACH DELETE wp
+      `, { wardenId });
+
       for (const phone of body.phones) {
         if (phone && String(phone).trim()) {
-          await execute(`INSERT INTO WARDEN_PHONE (WardenID, PhoneNo) VALUES (?, ?)`, [wardenId, String(phone).trim()]);
+          await execute(`
+            MERGE (wp:WardenPhone {WardenID: $wardenId, PhoneNo: $phoneNo})
+            WITH wp
+            MATCH (w:Warden {WardenID: $wardenId})
+            MERGE (w)-[:HAS_PHONE]->(wp)
+          `, { wardenId, phoneNo: String(phone).trim() });
         }
       }
     }
@@ -141,15 +160,24 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const wardenId = req.params.id;
-    const [hostelCount] = await query(`SELECT COUNT(*) AS count FROM HOSTEL WHERE WardenID = ?`, [wardenId]);
-    if (hostelCount && Number(hostelCount.count) > 0) {
+    const hostelCount = await query(`
+      MATCH (h:Hostel)-[:MANAGED_BY]->(w:Warden {WardenID: $wardenId})
+      RETURN count(h) AS count
+    `, { wardenId });
+
+    if (hostelCount && Number(hostelCount[0]?.count || 0) > 0) {
       return res.status(400).json({
         success: false,
-        message: `Cannot delete warden: assigned to ${hostelCount.count} hostel(s). Reassign hostel first.`
+        message: `Cannot delete warden: assigned to ${hostelCount[0].count} hostel(s). Reassign hostel first.`
       });
     }
 
-    await execute(`DELETE FROM WARDEN WHERE WardenID = ?`, [wardenId]);
+    await execute(`
+      MATCH (w:Warden {WardenID: $wardenId})
+      OPTIONAL MATCH (w)-[:HAS_PHONE]->(wp:WardenPhone)
+      DETACH DELETE w, wp
+    `, { wardenId });
+
     res.json({ success: true, message: 'Warden deleted successfully' });
   } catch (error) {
     console.error('Error deleting warden:', error);

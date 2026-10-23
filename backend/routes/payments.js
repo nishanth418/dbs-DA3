@@ -1,59 +1,54 @@
 const express = require('express');
 const router = express.Router();
-const { query, execute } = require('../database');
+const { query, execute, syncRelationships } = require('../database');
 
 // GET all payments with student name & payment details
 router.get('/', async (req, res) => {
   try {
     const { student_id, status, search } = req.query;
-    let sql = `
-      SELECT 
+
+    const cypher = `
+      MATCH (s:Student)-[:MADE_PAYMENT]->(p:Payment)
+      OPTIONAL MATCH (s)-[:RESIDES_IN]->(h:Hostel)
+      OPTIONAL MATCH (p)-[:HAS_DETAIL]->(pd:PaymentDetail)
+      WHERE ($studentId IS NULL OR p.StudentID = $studentId)
+        AND ($status IS NULL OR p.Status = $status)
+        AND ($search IS NULL OR toLower(p.PaymentID) CONTAINS toLower($search) 
+              OR toLower(s.FirstName) CONTAINS toLower($search) 
+              OR toLower(s.LastName) CONTAINS toLower($search))
+      WITH s, p, h, count(pd) AS details_count
+      RETURN 
         p.PaymentID AS payment_id,
-        p.PaymentID,
+        p.PaymentID AS PaymentID,
         p.StudentID AS student_id,
-        p.StudentID,
+        p.StudentID AS StudentID,
         p.Amount AS total_amount,
         p.Amount AS amount,
-        p.Amount,
+        p.Amount AS Amount,
         p.PaymentMode AS payment_method,
-        p.PaymentMode,
+        p.PaymentMode AS PaymentMode,
         p.Status AS payment_status,
         p.Status AS status,
-        p.Status,
-        p.PaymentDay,
-        p.PaymentMonth,
-        p.PaymentYear,
-        CONCAT(p.PaymentDay, '-', p.PaymentMonth, '-', p.PaymentYear) AS payment_date,
+        p.Status AS Status,
+        p.PaymentDay AS PaymentDay,
+        p.PaymentMonth AS PaymentMonth,
+        p.PaymentYear AS PaymentYear,
+        toString(p.PaymentDay) + '-' + toString(p.PaymentMonth) + '-' + toString(p.PaymentYear) AS payment_date,
         p.PaymentID AS transaction_id,
-        CONCAT(s.FirstName, ' ', s.LastName) AS student_name,
+        s.FirstName + ' ' + s.LastName AS student_name,
         s.Email AS student_email,
         s.RoomNo AS room_number,
-        h.HostelName AS hostel_name,
-        (SELECT COUNT(*) FROM PAYMENT_DETAIL pd WHERE pd.PaymentID = p.PaymentID) AS details_count
-      FROM PAYMENT p
-      JOIN STUDENT s ON p.StudentID = s.StudentID
-      LEFT JOIN HOSTEL h ON s.HostelID = h.HostelID
-      WHERE 1=1
+        coalesce(h.HostelName, 'Unassigned') AS hostel_name,
+        details_count
+      ORDER BY p.PaymentID DESC
     `;
-    const params = [];
 
-    if (student_id && student_id.trim()) {
-      sql += ` AND p.StudentID = ?`;
-      params.push(student_id.trim());
-    }
-    if (status && status.trim()) {
-      sql += ` AND p.Status = ?`;
-      params.push(status.trim());
-    }
-    if (search && search.trim()) {
-      sql += ` AND (p.PaymentID LIKE ? OR s.FirstName LIKE ? OR s.LastName LIKE ?)`;
-      const s = `%${search.trim()}%`;
-      params.push(s, s, s);
-    }
+    const rows = await query(cypher, {
+      studentId: student_id && student_id.trim() ? student_id.trim() : null,
+      status: status && status.trim() ? status.trim() : null,
+      search: search && search.trim() ? search.trim() : null
+    });
 
-    sql += ` ORDER BY p.PaymentID DESC`;
-
-    const rows = await query(sql, params);
     res.json({ success: true, count: rows.length, data: rows });
   } catch (error) {
     console.error('Error fetching payments:', error);
@@ -65,32 +60,31 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const paymentId = req.params.id;
-    const rows = await query(`
-      SELECT 
+    const cypher = `
+      MATCH (s:Student)-[:MADE_PAYMENT]->(p:Payment {PaymentID: $paymentId})
+      OPTIONAL MATCH (s)-[:RESIDES_IN]->(h:Hostel)
+      RETURN 
         p.PaymentID AS payment_id,
-        p.PaymentID,
+        p.PaymentID AS PaymentID,
         p.StudentID AS student_id,
-        p.StudentID,
+        p.StudentID AS StudentID,
         p.Amount AS total_amount,
-        p.Amount,
+        p.Amount AS Amount,
         p.PaymentMode AS payment_method,
-        p.PaymentMode,
+        p.PaymentMode AS PaymentMode,
         p.Status AS payment_status,
-        p.Status,
-        p.PaymentDay,
-        p.PaymentMonth,
-        p.PaymentYear,
-        CONCAT(p.PaymentDay, '-', p.PaymentMonth, '-', p.PaymentYear) AS payment_date,
+        p.Status AS Status,
+        p.PaymentDay AS PaymentDay,
+        p.PaymentMonth AS PaymentMonth,
+        p.PaymentYear AS PaymentYear,
+        toString(p.PaymentDay) + '-' + toString(p.PaymentMonth) + '-' + toString(p.PaymentYear) AS payment_date,
         p.PaymentID AS transaction_id,
-        CONCAT(s.FirstName, ' ', s.LastName) AS student_name,
+        s.FirstName + ' ' + s.LastName AS student_name,
         s.Email AS student_email,
         s.RoomNo AS room_number,
-        h.HostelName AS hostel_name
-      FROM PAYMENT p
-      JOIN STUDENT s ON p.StudentID = s.StudentID
-      LEFT JOIN HOSTEL h ON s.HostelID = h.HostelID
-      WHERE p.PaymentID = ?
-    `, [paymentId]);
+        coalesce(h.HostelName, 'Unassigned') AS hostel_name
+    `;
+    const rows = await query(cypher, { paymentId });
 
     if (rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Payment not found' });
@@ -98,17 +92,17 @@ router.get('/:id', async (req, res) => {
 
     const payment = rows[0];
     const details = await query(`
-      SELECT 
-        PaymentID,
-        DetailID,
-        Month,
-        Year,
-        MessCharges,
-        OtherCharges,
-        (MessCharges + OtherCharges) AS total
-      FROM PAYMENT_DETAIL 
-      WHERE PaymentID = ?
-    `, [paymentId]);
+      MATCH (p:Payment {PaymentID: $paymentId})-[:HAS_DETAIL]->(pd:PaymentDetail)
+      RETURN 
+        pd.PaymentID AS PaymentID,
+        pd.DetailID AS DetailID,
+        pd.Month AS Month,
+        pd.Year AS Year,
+        pd.MessCharges AS MessCharges,
+        pd.OtherCharges AS OtherCharges,
+        (pd.MessCharges + pd.OtherCharges) AS total
+      ORDER BY pd.DetailID ASC
+    `, { paymentId });
 
     res.json({ success: true, data: { ...payment, details } });
   } catch (error) {
@@ -133,35 +127,48 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Student ID is required' });
     }
 
+    const paymentProps = {
+      PaymentID: finalId,
+      StudentID: finalStudentId,
+      Amount: finalAmount,
+      PaymentMode: PaymentMode || payment_method || 'UPI',
+      Status: Status || payment_status || status || 'Successful',
+      PaymentDay: day,
+      PaymentMonth: month,
+      PaymentYear: year
+    };
+
     await execute(`
-      INSERT INTO PAYMENT (PaymentID, StudentID, Amount, PaymentMode, Status, PaymentDay, PaymentMonth, PaymentYear)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      finalId,
-      finalStudentId,
-      finalAmount,
-      PaymentMode || payment_method || 'UPI',
-      Status || payment_status || status || 'Successful',
-      day,
-      month,
-      year
-    ]);
+      MERGE (p:Payment {PaymentID: $paymentId})
+      SET p += $props
+    `, { paymentId: finalId, props: paymentProps });
+
+    await syncRelationships('Payment', paymentProps);
 
     if (details && Array.isArray(details) && details.length > 0) {
       for (let i = 0; i < details.length; i++) {
         const d = details[i];
         const detailId = d.DetailID || d.detail_id || ('D' + (i + 1));
+        const detailProps = {
+          PaymentID: finalId,
+          DetailID: detailId,
+          Month: d.Month || d.month || 'Current',
+          Year: Number(d.Year || d.year || year),
+          MessCharges: Number(d.MessCharges || d.mess_charges || 0),
+          OtherCharges: Number(d.OtherCharges || d.other_charges || 0)
+        };
+
         await execute(`
-          INSERT INTO PAYMENT_DETAIL (PaymentID, DetailID, Month, Year, MessCharges, OtherCharges)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `, [
-          finalId,
+          MERGE (pd:PaymentDetail {PaymentID: $paymentId, DetailID: $detailId})
+          SET pd += $props
+          WITH pd
+          MATCH (p:Payment {PaymentID: $paymentId})
+          MERGE (p)-[:HAS_DETAIL]->(pd)
+        `, {
+          paymentId: finalId,
           detailId,
-          d.Month || d.month || 'Current',
-          Number(d.Year || d.year || year),
-          Number(d.MessCharges || d.mess_charges || 0),
-          Number(d.OtherCharges || d.other_charges || 0)
-        ]);
+          props: detailProps
+        });
       }
     }
 
@@ -176,7 +183,11 @@ router.post('/', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const paymentId = req.params.id;
-    await execute(`DELETE FROM PAYMENT WHERE PaymentID = ?`, [paymentId]);
+    await execute(`
+      MATCH (p:Payment {PaymentID: $paymentId})
+      OPTIONAL MATCH (p)-[:HAS_DETAIL]->(pd:PaymentDetail)
+      DETACH DELETE p, pd
+    `, { paymentId });
     res.json({ success: true, message: 'Payment deleted successfully' });
   } catch (error) {
     console.error('Error deleting payment:', error);

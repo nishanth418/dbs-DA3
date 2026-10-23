@@ -264,9 +264,9 @@ export default function SqlQueryPage({ showToast }) {
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <Database size={14} color="var(--primary)" />
-              <span>18 MySQL Tables</span>
+              <span>18 Neo4j Entities</span>
             </div>
-            <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>Live</span>
+            <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>Live AuraDB</span>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -345,7 +345,7 @@ export default function SqlQueryPage({ showToast }) {
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
               <Code2 size={14} color="var(--primary)" />
-              <span>Interactive SQL Editor (MySQL 8.4)</span>
+              <span>Interactive Cypher & SQL Studio (Neo4j AuraDB)</span>
             </div>
 
             <div style={{ display: 'flex', gap: 6 }}>
@@ -579,7 +579,7 @@ export default function SqlQueryPage({ showToast }) {
             </div>
           ) : (
             <div style={{ padding: '24px 20px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
-              {result.message || 'DDL / DML statement executed successfully in MySQL database.'}
+              {result.message || 'Query executed successfully in Neo4j AuraDB.'}
             </div>
           )}
         </div>

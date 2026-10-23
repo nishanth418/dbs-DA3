@@ -18,6 +18,8 @@ frontend/.env
 .env.*.local
 *.pem
 *.key
+!.env.example
+!backend/.env.example
 
 # Build outputs
 dist/

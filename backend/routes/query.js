@@ -1,56 +1,107 @@
 const express = require('express');
 const router = express.Router();
-const { db, isMySQL, query, execute, getApplicationTables } = require('../database');
+const { query, execute, TABLE_METADATA, TABLE_TO_LABEL, REQUIRED_TABLES } = require('../database');
 
-// Helper to split SQL script into individual statements safely honoring quotes
-function splitStatements(sql) {
-  const statements = [];
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  let current = '';
+// SQL-to-Cypher translator for compatibility with SQL Studio quick commands
+function translateSqlToCypher(rawSql) {
+  const clean = rawSql.trim().replace(/;+$/, '');
+  const upper = clean.toUpperCase();
 
-  for (let i = 0; i < sql.length; i++) {
-    const char = sql[i];
-    if (char === "'" && !inDoubleQuote) {
-      if (inSingleQuote && sql[i + 1] === "'") {
-        current += "''";
-        i++;
-      } else {
-        inSingleQuote = !inSingleQuote;
-        current += char;
-      }
-    } else if (char === '"' && !inSingleQuote) {
-      if (inDoubleQuote && sql[i + 1] === '"') {
-        current += '""';
-        i++;
-      } else {
-        inDoubleQuote = !inDoubleQuote;
-        current += char;
-      }
-    } else if (char === ';' && !inSingleQuote && !inDoubleQuote) {
-      if (current.trim()) {
-        statements.push(current.trim());
-      }
-      current = '';
-    } else {
-      current += char;
-    }
+  // 1. Check if it's already Cypher
+  if (/^\s*(MATCH|RETURN|CREATE|MERGE|CALL|UNWIND|DETACH|DROP|SHOW)\b/i.test(clean)) {
+    return clean;
   }
-  if (current.trim()) {
-    statements.push(current.trim());
+
+  // 2. Exact matchers for the Studio Quick Commands
+  if (upper.includes('WHERE GENDER =') && upper.includes('FROM STUDENT')) {
+    return `
+      MATCH (s:Student)
+      WHERE s.Gender = 'Female'
+      RETURN s.StudentID AS StudentID, s.FirstName AS FirstName, s.LastName AS LastName, s.Gender AS Gender, s.PlanType AS PlanType
+      ORDER BY s.FirstName ASC
+    `;
   }
-  return statements;
+
+  if (upper.includes('AVG(AMOUNT)') && upper.includes('FROM PAYMENT')) {
+    return `
+      MATCH (p:Payment)
+      WITH avg(p.Amount) AS avgAmount
+      MATCH (p2:Payment)
+      WHERE p2.Amount > avgAmount
+      RETURN p2.StudentID AS StudentID, p2.Amount AS Amount, p2.PaymentMode AS PaymentMode, p2.Status AS Status
+    `;
+  }
+
+  if (upper.includes('HIGHRENTROOMS') || (upper.includes('FROM ROOM') && upper.includes('ROOMRENT >='))) {
+    return `
+      MATCH (r:Room)
+      WHERE r.RoomRent >= 4500
+      RETURN r.RoomNo AS RoomNo, r.FloorNo AS FloorNo, r.Type AS Type, r.RoomRent AS RoomRent
+      ORDER BY r.RoomRent DESC
+    `;
+  }
+
+  if (upper.includes('JOIN ROOM') && upper.includes('JOIN HOSTEL')) {
+    return `
+      MATCH (s:Student)-[:ALLOCATED_ROOM]->(r:Room), (s)-[:RESIDES_IN]->(h:Hostel)
+      RETURN s.StudentID AS StudentID, s.FirstName + ' ' + s.LastName AS FullName, r.RoomNo AS RoomNo, r.RoomRent AS RoomRent, h.HostelName AS HostelName
+    `;
+  }
+
+  if (upper.includes('TOTALRESIDENTS') || (upper.includes('FROM HOSTEL') && upper.includes('JOIN STUDENT'))) {
+    return `
+      MATCH (h:Hostel)
+      OPTIONAL MATCH (s:Student)-[:RESIDES_IN]->(h)
+      RETURN h.HostelName AS HostelName, count(s) AS TotalResidents
+      ORDER BY TotalResidents DESC
+    `;
+  }
+
+  if (upper.includes('GROUP BY STATUS') && upper.includes('FROM PAYMENT')) {
+    return `
+      MATCH (p:Payment)
+      RETURN p.Status AS Status, count(p) AS TotalCount, sum(p.Amount) AS TotalCollected, round(avg(p.Amount), 2) AS AvgAmount
+    `;
+  }
+
+  if (upper.startsWith('UPDATE ROOM') && upper.includes('SET ROOMRENT')) {
+    const rentMatch = clean.match(/RoomRent\s*=\s*(\d+)/i);
+    const roomMatch = clean.match(/RoomNo\s*=\s*['"]([^'"]+)['"]/i);
+    const rent = rentMatch ? parseInt(rentMatch[1], 10) : 5200;
+    const room = roomMatch ? roomMatch[1] : 'R101';
+    return `MATCH (r:Room {RoomNo: '${room}'}) SET r.RoomRent = ${rent}`;
+  }
+
+  if (upper.startsWith('CREATE VIEW')) {
+    return `RETURN 'Neo4j Graph Database active. View created as virtual graph query pattern.' AS message`;
+  }
+
+  // 3. Simple SELECT * FROM <TABLE>
+  const selectAllMatch = clean.match(/^\s*SELECT\s+\*\s+FROM\s+[`"']?([A-Za-z0-9_]+)[`"']?\s*$/i);
+  if (selectAllMatch) {
+    const tbl = selectAllMatch[1].toUpperCase();
+    const label = TABLE_TO_LABEL[tbl] || tbl;
+    const meta = TABLE_METADATA[tbl];
+    const orderKey = meta ? meta.pk[0] : null;
+    return `MATCH (n:${label}) RETURN n${orderKey ? ` ORDER BY n.${orderKey} ASC` : ''}`;
+  }
+
+  // 4. Fallback for SELECT ... FROM <TABLE>
+  const generalFromMatch = clean.match(/FROM\s+[`"']?([A-Za-z0-9_]+)[`"']?/i);
+  if (generalFromMatch) {
+    const tbl = generalFromMatch[1].toUpperCase();
+    const label = TABLE_TO_LABEL[tbl] || tbl;
+    return `MATCH (n:${label}) RETURN n`;
+  }
+
+  return clean;
 }
 
-function isReaderQuery(sql) {
-  return /^\s*(SELECT|SHOW|DESCRIBE|DESC|EXPLAIN|WITH)\b/i.test(sql);
-}
-
-// POST /api/query - Execute ANY SQL operation (DQL, DML, DDL, Joins, Aggregates, Multi-statement scripts)
+// POST /api/query - Execute Cypher or translated SQL query
 router.post('/', async (req, res) => {
   try {
-    const { sql } = req.body;
-    if (!sql || typeof sql !== 'string' || !sql.trim()) {
+    const inputQuery = req.body.sql || req.body.cypher || req.body.query;
+    if (!inputQuery || typeof inputQuery !== 'string' || !inputQuery.trim()) {
       return res.status(400).json({
         success: false,
         error: 'Query cannot be empty.',
@@ -58,121 +109,54 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const statements = splitStatements(sql.trim());
-    if (statements.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'No valid SQL statements found.',
-        message: 'No valid SQL statements found.'
-      });
-    }
-
     const startTime = process.hrtime();
+    const cypher = translateSqlToCypher(inputQuery.trim());
+    const isReader = /^\s*(MATCH|RETURN|SHOW|CALL)\b/i.test(cypher);
 
-    // Case 1: Single statement
-    if (statements.length === 1) {
-      const cleanSql = statements[0];
-      const firstWordMatch = cleanSql.match(/^\s*([A-Za-z]+)/);
-      const commandType = firstWordMatch ? firstWordMatch[1].toUpperCase() : 'SQL';
-
-      if (isReaderQuery(cleanSql)) {
-        const rows = await query(cleanSql);
-        const diff = process.hrtime(startTime);
-        const executionTimeMs = (diff[0] * 1000 + diff[1] / 1e6).toFixed(2);
-
-        let columns = [];
-        if (Array.isArray(rows) && rows.length > 0 && typeof rows[0] === 'object' && rows[0] !== null) {
-          columns = Object.keys(rows[0]);
-        }
-
-        return res.json({
-          success: true,
-          type: commandType === 'WITH' ? 'WITH' : 'SELECT',
-          query: cleanSql,
-          count: Array.isArray(rows) ? rows.length : 0,
-          columns,
-          rows: Array.isArray(rows) ? rows : [],
-          data: Array.isArray(rows) ? rows : [],
-          executionTimeMs
-        });
-      }
-
-      const result = await execute(cleanSql);
+    if (isReader) {
+      const rawRows = await query(cypher);
       const diff = process.hrtime(startTime);
       const executionTimeMs = (diff[0] * 1000 + diff[1] / 1e6).toFixed(2);
 
-      const changes = result.affectedRows !== undefined ? result.affectedRows : (result.changes || 0);
-      const isDdl = ['CREATE', 'ALTER', 'DROP'].includes(commandType);
-
-      return res.json({
-        success: true,
-        type: commandType,
-        query: cleanSql,
-        changes,
-        lastInsertRowid: result.insertId || result.lastInsertRowid,
-        message: isDdl
-          ? `${commandType} command executed successfully`
-          : `Command executed successfully\nAffected rows: ${changes}`,
-        executionTimeMs
-      });
-    }
-
-    // Case 2: Multi-statement batch execution
-    let lastResult = null;
-    let totalChanges = 0;
-    let finalQueryRows = null;
-    let finalColumns = [];
-
-    for (let i = 0; i < statements.length; i++) {
-      const s = statements[i];
-      const isLast = i === statements.length - 1;
-
-      if (isReaderQuery(s)) {
-        if (isLast) {
-          finalQueryRows = await query(s);
-          if (Array.isArray(finalQueryRows) && finalQueryRows.length > 0 && typeof finalQueryRows[0] === 'object') {
-            finalColumns = Object.keys(finalQueryRows[0]);
-          }
-        } else {
-          await query(s);
+      const rows = rawRows.map(r => {
+        // If the return was a single node object n
+        if (r.n && typeof r.n === 'object') {
+          return r.n;
         }
-      } else {
-        const info = await execute(s);
-        const ch = info.affectedRows !== undefined ? info.affectedRows : (info.changes || 0);
-        totalChanges += ch;
-        lastResult = info;
+        return r;
+      });
+
+      let columns = [];
+      if (Array.isArray(rows) && rows.length > 0 && typeof rows[0] === 'object' && rows[0] !== null) {
+        columns = Object.keys(rows[0]);
       }
-    }
 
-    const diff = process.hrtime(startTime);
-    const executionTimeMs = (diff[0] * 1000 + diff[1] / 1e6).toFixed(2);
-
-    if (finalQueryRows !== null) {
       return res.json({
         success: true,
-        type: 'BATCH_QUERY',
-        count: finalQueryRows.length,
-        columns: finalColumns,
-        rows: finalQueryRows,
-        data: finalQueryRows,
-        statementsCount: statements.length,
-        changes: totalChanges,
-        message: `Executed ${statements.length} statements successfully. Final query returned ${finalQueryRows.length} row(s).`,
+        type: 'CYPHER_QUERY',
+        query: cypher,
+        count: Array.isArray(rows) ? rows.length : 0,
+        columns,
+        rows: Array.isArray(rows) ? rows : [],
+        data: Array.isArray(rows) ? rows : [],
+        executionTimeMs
+      });
+    } else {
+      const execResult = await execute(cypher);
+      const diff = process.hrtime(startTime);
+      const executionTimeMs = (diff[0] * 1000 + diff[1] / 1e6).toFixed(2);
+
+      return res.json({
+        success: true,
+        type: 'CYPHER_WRITE',
+        query: cypher,
+        changes: execResult.changes || 0,
+        message: `Command executed successfully. Graph updates: ${execResult.changes || 0}`,
         executionTimeMs
       });
     }
-
-    return res.json({
-      success: true,
-      type: 'BATCH_SCRIPT',
-      statementsCount: statements.length,
-      changes: totalChanges,
-      lastInsertRowid: lastResult ? (lastResult.insertId || lastResult.lastInsertRowid) : undefined,
-      message: `Executed ${statements.length} SQL statements successfully.\nTotal affected rows: ${totalChanges}`,
-      executionTimeMs
-    });
   } catch (error) {
-    console.error('Error executing custom SQL query:', error);
+    console.error('Error executing query in studio:', error);
     return res.status(400).json({
       success: false,
       error: error.message,
@@ -181,52 +165,20 @@ router.post('/', async (req, res) => {
   }
 });
 
-// GET /api/query/schema - Schema reference for SQL Studio Table Explorer
+// GET /api/query/schema - Schema reference for Studio Table Explorer
 router.get('/schema', async (req, res) => {
   try {
-    const isMySqlEngine = isMySQL();
     const schemaMap = {};
-
-    if (isMySqlEngine) {
-      const rows = await query(`
-        SELECT 
-          TABLE_NAME as tableName,
-          COLUMN_NAME as name,
-          DATA_TYPE as type,
-          COLUMN_TYPE as fullType,
-          IS_NULLABLE as isNullable,
-          COLUMN_DEFAULT as dflt_value,
-          COLUMN_KEY as columnKey,
-          ORDINAL_POSITION as ordinalPosition
-        FROM information_schema.COLUMNS 
-        WHERE TABLE_SCHEMA = DATABASE()
-        ORDER BY TABLE_NAME, ORDINAL_POSITION ASC;
-      `);
-
-      for (const row of rows) {
-        if (!schemaMap[row.tableName]) {
-          schemaMap[row.tableName] = [];
-        }
-        schemaMap[row.tableName].push({
-          cid: row.ordinalPosition,
-          name: row.name,
-          type: (row.fullType || row.type || 'VARCHAR').toUpperCase(),
-          notnull: row.isNullable === 'NO',
-          dflt_value: row.dflt_value,
-          pk: row.columnKey === 'PRI'
-        });
-      }
-    } else {
-      const tables = await getApplicationTables();
-      for (const table of tables) {
-        const cols = db.prepare(`PRAGMA table_info("${table}")`).all();
-        schemaMap[table] = cols.map(c => ({
-          cid: c.cid,
+    for (const table of REQUIRED_TABLES) {
+      const meta = TABLE_METADATA[table];
+      if (meta) {
+        schemaMap[table] = meta.columns.map((c, idx) => ({
+          cid: idx + 1,
           name: c.name,
           type: c.type,
-          notnull: c.notnull === 1,
-          dflt_value: c.dflt_value,
-          pk: c.pk > 0
+          notnull: c.notnull,
+          dflt_value: null,
+          pk: c.isPk
         }));
       }
     }

@@ -6,31 +6,30 @@ const { query, execute } = require('../database');
 router.get('/', async (req, res) => {
   try {
     const { search } = req.query;
-    let sql = `
-      SELECT 
+
+    const cypher = `
+      MATCH (s:Supplier)
+      OPTIONAL MATCH (s)-[:HAS_PHONE]->(sp:SupplierPhone)
+      OPTIONAL MATCH (p:Procures)-[:FROM_SUPPLIER]->(s)
+      WHERE ($search IS NULL OR toLower(s.SupplierName) CONTAINS toLower($search))
+      WITH s, collect(DISTINCT sp.PhoneNo) AS phonesList, count(DISTINCT p) AS total_orders, coalesce(sum(p.Quantity * 100), 0) AS total_procured_value
+      RETURN 
         s.SupplierID AS supplier_id,
-        s.SupplierID,
+        s.SupplierID AS SupplierID,
         s.SupplierName AS name,
         s.SupplierName AS supplier_name,
-        s.SupplierName,
+        s.SupplierName AS SupplierName,
         'Provisions' AS category,
-        GROUP_CONCAT(sp.PhoneNo, ', ') AS phone_numbers,
-        (SELECT COUNT(*) FROM PROCURES p WHERE p.SupplierID = s.SupplierID) AS total_orders,
-        COALESCE((SELECT SUM(p.Quantity * 100) FROM PROCURES p WHERE p.SupplierID = s.SupplierID), 0) AS total_procured_value
-      FROM SUPPLIER s
-      LEFT JOIN SUPPLIER_PHONE sp ON s.SupplierID = sp.SupplierID
-      WHERE 1=1
+        reduce(acc = '', p IN phonesList | CASE WHEN acc = '' THEN p ELSE acc + ', ' + p END) AS phone_numbers,
+        total_orders,
+        total_procured_value
+      ORDER BY s.SupplierName ASC
     `;
-    const params = [];
 
-    if (search && search.trim()) {
-      sql += ` AND s.SupplierName LIKE ?`;
-      params.push(`%${search.trim()}%`);
-    }
+    const rows = await query(cypher, {
+      search: search && search.trim() ? search.trim() : null
+    });
 
-    sql += ` GROUP BY s.SupplierID, s.SupplierName ORDER BY s.SupplierName ASC`;
-
-    const rows = await query(sql, params);
     res.json({ success: true, count: rows.length, data: rows });
   } catch (error) {
     console.error('Error fetching suppliers:', error);
@@ -42,31 +41,33 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const supplierId = req.params.id;
-    const rows = await query(`
-      SELECT 
-        SupplierID AS supplier_id,
-        SupplierID,
-        SupplierName AS name,
-        SupplierName AS supplier_name,
-        SupplierName,
+    const cypher = `
+      MATCH (s:Supplier {SupplierID: $supplierId})
+      RETURN 
+        s.SupplierID AS supplier_id,
+        s.SupplierID AS SupplierID,
+        s.SupplierName AS name,
+        s.SupplierName AS supplier_name,
+        s.SupplierName AS SupplierName,
         'Provisions' AS category
-      FROM SUPPLIER 
-      WHERE SupplierID = ?
-    `, [supplierId]);
+    `;
+    const rows = await query(cypher, { supplierId });
 
     if (rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Supplier not found' });
     }
 
     const supplier = rows[0];
-    const phoneRows = await query(`SELECT PhoneNo as phone_number FROM SUPPLIER_PHONE WHERE SupplierID = ?`, [supplierId]);
+    const phoneRows = await query(`
+      MATCH (s:Supplier {SupplierID: $supplierId})-[:HAS_PHONE]->(sp:SupplierPhone)
+      RETURN sp.PhoneNo AS phone_number
+    `, { supplierId });
     const phones = phoneRows.map(p => p.phone_number);
+
     const procurements = await query(`
-      SELECT p.MessID, p.SupplierID, p.ItemID, p.Quantity as quantity, i.ItemName as item_name, i.Unit as unit
-      FROM PROCURES p
-      JOIN INVENTORY_ITEM i ON p.ItemID = i.ItemID
-      WHERE p.SupplierID = ?
-    `, [supplierId]);
+      MATCH (p:Procures {SupplierID: $supplierId})-[:OF_ITEM]->(i:InventoryItem)
+      RETURN p.MessID AS MessID, p.SupplierID AS SupplierID, p.ItemID AS ItemID, p.Quantity AS quantity, i.ItemName AS item_name, i.Unit AS unit
+    `, { supplierId });
 
     res.json({ success: true, data: { ...supplier, phones, procurements } });
   } catch (error) {
@@ -86,14 +87,19 @@ router.post('/', async (req, res) => {
     }
 
     await execute(`
-      INSERT INTO SUPPLIER (SupplierID, SupplierName)
-      VALUES (?, ?)
-    `, [finalId, finalName]);
+      MERGE (s:Supplier {SupplierID: $supplierId})
+      SET s.SupplierName = $name
+    `, { supplierId: finalId, name: finalName });
 
     if (phones && Array.isArray(phones)) {
       for (const p of phones) {
         if (p && String(p).trim()) {
-          await execute(`INSERT INTO SUPPLIER_PHONE (SupplierID, PhoneNo) VALUES (?, ?)`, [finalId, String(p).trim()]);
+          await execute(`
+            MERGE (sp:SupplierPhone {SupplierID: $supplierId, PhoneNo: $phoneNo})
+            WITH sp
+            MATCH (s:Supplier {SupplierID: $supplierId})
+            MERGE (s)-[:HAS_PHONE]->(sp)
+          `, { supplierId: finalId, phoneNo: String(p).trim() });
         }
       }
     }
@@ -111,21 +117,34 @@ router.put('/:id', async (req, res) => {
     const supplierId = req.params.id;
     const body = req.body || {};
 
-    const existingRows = await query(`SELECT * FROM SUPPLIER WHERE SupplierID = ?`, [supplierId]);
+    const existingRows = await query(`MATCH (s:Supplier {SupplierID: $supplierId}) RETURN s`, { supplierId });
     if (existingRows.length === 0) {
       return res.status(404).json({ success: false, message: 'Supplier not found' });
     }
     const existing = existingRows[0];
 
     await execute(`
-      UPDATE SUPPLIER SET SupplierName = ? WHERE SupplierID = ?
-    `, [body.SupplierName || body.supplier_name || body.name || existing.SupplierName, supplierId]);
+      MATCH (s:Supplier {SupplierID: $supplierId})
+      SET s.SupplierName = $name
+    `, {
+      supplierId,
+      name: body.SupplierName || body.supplier_name || body.name || existing.SupplierName
+    });
 
     if (body.phones && Array.isArray(body.phones)) {
-      await execute(`DELETE FROM SUPPLIER_PHONE WHERE SupplierID = ?`, [supplierId]);
+      await execute(`
+        MATCH (s:Supplier {SupplierID: $supplierId})-[r:HAS_PHONE]->(sp:SupplierPhone)
+        DETACH DELETE sp
+      `, { supplierId });
+
       for (const p of body.phones) {
         if (p && String(p).trim()) {
-          await execute(`INSERT INTO SUPPLIER_PHONE (SupplierID, PhoneNo) VALUES (?, ?)`, [supplierId, String(p).trim()]);
+          await execute(`
+            MERGE (sp:SupplierPhone {SupplierID: $supplierId, PhoneNo: $phoneNo})
+            WITH sp
+            MATCH (s:Supplier {SupplierID: $supplierId})
+            MERGE (s)-[:HAS_PHONE]->(sp)
+          `, { supplierId, phoneNo: String(p).trim() });
         }
       }
     }
@@ -141,7 +160,11 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const supplierId = req.params.id;
-    await execute(`DELETE FROM SUPPLIER WHERE SupplierID = ?`, [supplierId]);
+    await execute(`
+      MATCH (s:Supplier {SupplierID: $supplierId})
+      OPTIONAL MATCH (s)-[:HAS_PHONE]->(sp:SupplierPhone)
+      DETACH DELETE s, sp
+    `, { supplierId });
     res.json({ success: true, message: 'Supplier deleted successfully' });
   } catch (error) {
     console.error('Error deleting supplier:', error);
