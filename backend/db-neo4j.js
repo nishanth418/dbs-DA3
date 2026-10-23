@@ -267,11 +267,8 @@ let driverInstance = null;
 
 function getDatabaseName() {
   const db = process.env.NEO4J_DATABASE;
-  // In Neo4j Aura single-instance deployments, the database is named after the instance ID.
-  // Passing 'neo4j' to session on an instance that does not have a database named 'neo4j' causes a routing error.
-  // When 'neo4j' or unset, omitting the database parameter routes seamlessly to the cluster's default home database.
   if (!db || db === 'neo4j') {
-    return undefined;
+    return '78fcafdc';
   }
   return db;
 }
@@ -297,11 +294,10 @@ function getDriver() {
 
 function createSession(options = {}) {
   const driver = getDriver();
-  const sessionConfig = { ...options };
-  const db = getDatabaseName();
-  if (db) {
-    sessionConfig.database = db;
-  }
+  const sessionConfig = {
+    database: getDatabaseName(),
+    ...options
+  };
   return driver.session(sessionConfig);
 }
 

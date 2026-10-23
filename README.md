@@ -334,7 +334,7 @@ NODE_ENV=development
 NEO4J_URI=neo4j+s://78fcafdc.databases.neo4j.io
 NEO4J_USERNAME=78fcafdc
 NEO4J_PASSWORD=YOUR_ACTUAL_NEO4J_PASSWORD
-NEO4J_DATABASE=neo4j
+NEO4J_DATABASE=78fcafdc
 ```
 
 ### 3. Install Dependencies & Start Backend
@@ -374,7 +374,7 @@ The React development server will start at `http://localhost:3000` and proxy `/a
 | `NEO4J_URI` | Backend | Dev / Prod (Render) | Neo4j AuraDB connection protocol and host | `neo4j+s://78fcafdc.databases.neo4j.io` |
 | `NEO4J_USERNAME` | Backend | Dev / Prod (Render) | Neo4j database user | `78fcafdc` |
 | `NEO4J_PASSWORD` | Backend | Dev / Prod (Render) | Neo4j AuraDB secret password | *(Your private password)* |
-| `NEO4J_DATABASE` | Backend | Dev / Prod (Render) | Neo4j database name | `neo4j` |
+| `NEO4J_DATABASE` | Backend | Dev / Prod (Render) | Neo4j database name | `78fcafdc` |
 | `PORT` | Backend | Dev / Prod (Render) | HTTP server port | `5000` (Dev) / Assigned by Render (Prod) |
 | `NODE_ENV` | Backend | Dev / Prod (Render) | Node runtime environment | `production` |
 | `VITE_API_URL` | Frontend | Prod (Vercel) | Public URL of deployed Render backend | `https://your-backend.onrender.com` |
@@ -409,7 +409,7 @@ The backend is fully configured for zero-downtime deployment on Render.
    - `NEO4J_URI` = `neo4j+s://78fcafdc.databases.neo4j.io`
    - `NEO4J_USERNAME` = `78fcafdc`
    - `NEO4J_PASSWORD` = `<YOUR_NEO4J_PASSWORD>`
-   - `NEO4J_DATABASE` = `neo4j`
+   - `NEO4J_DATABASE` = `78fcafdc`
    - `NODE_ENV` = `production`
 5. Click **Create Web Service**.
 6. Once deployed, note down your Render public URL (e.g. `https://dbs-da3-backend.onrender.com`).
