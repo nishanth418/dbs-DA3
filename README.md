@@ -38,7 +38,7 @@ The platform equips university administrators, residence wardens, mess caterers,
 ┌──────────────────────────────────────▼─────────────────────────────────────────┐
 │                               DATABASE TIER                                    │
 │   Neo4j AuraDB (Fully Managed Cloud Graph Database)                            │
-│   • URI: neo4j+s://cd34fb3a.databases.neo4j.io                                 │
+│   • URI: neo4j+s://78fcafdc.databases.neo4j.io                                 │
 │   • 18 Structured Node Labels with Graph Relationships & Uniqueness Constraints │
 │   • ACID Compliant Graph Transactions & High-Performance Cypher Traversals     │
 └────────────────────────────────────────────────────────────────────────────────┘
@@ -331,8 +331,8 @@ Edit `backend/.env` with your actual Neo4j AuraDB credentials:
 PORT=5000
 NODE_ENV=development
 
-NEO4J_URI=neo4j+s://cd34fb3a.databases.neo4j.io
-NEO4J_USERNAME=cd34fb3a
+NEO4J_URI=neo4j+s://78fcafdc.databases.neo4j.io
+NEO4J_USERNAME=78fcafdc
 NEO4J_PASSWORD=YOUR_ACTUAL_NEO4J_PASSWORD
 NEO4J_DATABASE=neo4j
 ```
@@ -371,8 +371,8 @@ The React development server will start at `http://localhost:3000` and proxy `/a
 
 | Variable Name | Required By | Environment | Description | Example / Default |
 | :--- | :--- | :--- | :--- | :--- |
-| `NEO4J_URI` | Backend | Dev / Prod (Render) | Neo4j AuraDB connection protocol and host | `neo4j+s://cd34fb3a.databases.neo4j.io` |
-| `NEO4J_USERNAME` | Backend | Dev / Prod (Render) | Neo4j database user | `cd34fb3a` |
+| `NEO4J_URI` | Backend | Dev / Prod (Render) | Neo4j AuraDB connection protocol and host | `neo4j+s://78fcafdc.databases.neo4j.io` |
+| `NEO4J_USERNAME` | Backend | Dev / Prod (Render) | Neo4j database user | `78fcafdc` |
 | `NEO4J_PASSWORD` | Backend | Dev / Prod (Render) | Neo4j AuraDB secret password | *(Your private password)* |
 | `NEO4J_DATABASE` | Backend | Dev / Prod (Render) | Neo4j database name | `neo4j` |
 | `PORT` | Backend | Dev / Prod (Render) | HTTP server port | `5000` (Dev) / Assigned by Render (Prod) |
@@ -406,8 +406,8 @@ The backend is fully configured for zero-downtime deployment on Render.
    - **Start Command**: `node server.js`
    - **Health Check Path**: `/api/health`
 4. Add the Environment Variables:
-   - `NEO4J_URI` = `neo4j+s://cd34fb3a.databases.neo4j.io`
-   - `NEO4J_USERNAME` = `cd34fb3a`
+   - `NEO4J_URI` = `neo4j+s://78fcafdc.databases.neo4j.io`
+   - `NEO4J_USERNAME` = `78fcafdc`
    - `NEO4J_PASSWORD` = `<YOUR_NEO4J_PASSWORD>`
    - `NEO4J_DATABASE` = `neo4j`
    - `NODE_ENV` = `production`

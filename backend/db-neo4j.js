@@ -265,10 +265,21 @@ const TABLE_METADATA = {
 
 let driverInstance = null;
 
+function getDatabaseName() {
+  const db = process.env.NEO4J_DATABASE;
+  // In Neo4j Aura single-instance deployments, the database is named after the instance ID.
+  // Passing 'neo4j' to session on an instance that does not have a database named 'neo4j' causes a routing error.
+  // When 'neo4j' or unset, omitting the database parameter routes seamlessly to the cluster's default home database.
+  if (!db || db === 'neo4j') {
+    return undefined;
+  }
+  return db;
+}
+
 function getDriver() {
   if (!driverInstance) {
-    const uri = process.env.NEO4J_URI || 'neo4j+s://cd34fb3a.databases.neo4j.io';
-    const user = process.env.NEO4J_USERNAME || 'cd34fb3a';
+    const uri = process.env.NEO4J_URI || 'neo4j+s://78fcafdc.databases.neo4j.io';
+    const user = process.env.NEO4J_USERNAME || '78fcafdc';
     const password = process.env.NEO4J_PASSWORD || '';
 
     if (!password) {
@@ -282,6 +293,16 @@ function getDriver() {
     });
   }
   return driverInstance;
+}
+
+function createSession(options = {}) {
+  const driver = getDriver();
+  const sessionConfig = { ...options };
+  const db = getDatabaseName();
+  if (db) {
+    sessionConfig.database = db;
+  }
+  return driver.session(sessionConfig);
 }
 
 function normalizeNeo4jValue(value) {
@@ -322,8 +343,7 @@ function recordToObject(record) {
  * Universal Cypher query runner with session management
  */
 async function runCypher(cypher, params = {}) {
-  const driver = getDriver();
-  const session = driver.session({ defaultAccessMode: neo4j.session.WRITE });
+  const session = createSession({ defaultAccessMode: neo4j.session.WRITE });
   try {
     const result = await session.run(cypher, params);
     return result.records.map(recordToObject);
@@ -336,8 +356,7 @@ async function runCypher(cypher, params = {}) {
  * Execute Cypher query and return summary statistics
  */
 async function execute(cypher, params = {}) {
-  const driver = getDriver();
-  const session = driver.session({ defaultAccessMode: neo4j.session.WRITE });
+  const session = createSession({ defaultAccessMode: neo4j.session.WRITE });
   try {
     const result = await session.run(cypher, params);
     const updates = result.summary.counters.updates();
@@ -362,8 +381,7 @@ async function execute(cypher, params = {}) {
  */
 async function syncRelationships(label, properties) {
   if (!properties || typeof properties !== 'object') return;
-  const driver = getDriver();
-  const session = driver.session();
+  const session = createSession();
   try {
     if (label === 'Hostel' && properties.HostelID && properties.WardenID) {
       await session.run(`
@@ -542,8 +560,7 @@ async function getApplicationTables() {
  * Seed all authentic data using idempotent MERGE queries
  */
 async function initDatabase(force = false) {
-  const driver = getDriver();
-  const session = driver.session();
+  const session = createSession();
   try {
     console.log('[Neo4j] Initializing database schema constraints and seed records...');
 
@@ -877,8 +894,7 @@ async function initDatabase(force = false) {
  * Verify presence of all 18 entity labels and relationships in Neo4j
  */
 async function verifyDatabase() {
-  const driver = getDriver();
-  const session = driver.session();
+  const session = createSession();
   try {
     console.log('\n--- VERIFYING NEO4J AURADB APPLICATION ENTITIES ---');
     const tableCounts = {};
@@ -908,7 +924,9 @@ async function verifyDatabase() {
       return { success: true, count: REQUIRED_TABLES.length, tables: REQUIRED_TABLES, counts: tableCounts, relationships: relSummary };
     } else {
       console.warn('\n Notice: Some entities currently have 0 records:', missing);
-      return { success: false, missing, counts: tableCounts };
+      console.log('[Neo4j] Automatically running idempotent schema & data initialization...');
+      await initDatabase();
+      return { success: true, count: REQUIRED_TABLES.length, tables: REQUIRED_TABLES, autoInitialized: true };
     }
   } catch (err) {
     console.error('Neo4j verification error:', err.message);

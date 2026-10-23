@@ -14,9 +14,9 @@ services:
       - key: NODE_ENV
         value: production
       - key: NEO4J_URI
-        value: neo4j+s://cd34fb3a.databases.neo4j.io
+        value: neo4j+s://78fcafdc.databases.neo4j.io
       - key: NEO4J_USERNAME
-        value: cd34fb3a
+        value: 78fcafdc
       - key: NEO4J_PASSWORD
         sync: false
       - key: NEO4J_DATABASE
